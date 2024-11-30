@@ -58,4 +58,6 @@ You can create a free account with <https://www.mailgun.com/> which should be su
 
 - clone the repo
 - run `npm i` within the cloned repo directory
+- with latest portal updates new module is required, run
+  `npm install puppeteer-extra puppeteer-extra-plugin-stealth`
 - start the process with `npm start`
