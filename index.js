@@ -96,7 +96,7 @@ const process = async () => {
     const puppeteer = require('puppeteer-extra');
     const StealthPlugin = require('puppeteer-extra-plugin-stealth');
     puppeteer.use(StealthPlugin());
-    const browser = await puppeteer.launch(!IS_PROD ? {headless: false} : undefined);
+    const browser = await puppeteer.launch(!IS_PROD ? {headless: false} : {args: ['--no-sandbox', '--disable-setuid-sandbox']});
 
     logStep(`starting process with ${maxTries} tries left`);
 
