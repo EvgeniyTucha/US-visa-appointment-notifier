@@ -19,7 +19,7 @@ let maxTries = MAX_NUMBER_OF_POLL
 
 const login = async (page) => {
     logStep('logging in');
-    const response = await page.goto(siteInfo.LOGIN_URL);
+    const response = await page.goto(siteInfo.LOGIN_URL, {timeout: 0});
     // console.log(response.status());
     // console.log(response.headers());
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36');
@@ -67,7 +67,7 @@ const checkForSchedules = async (page) => {
         'Accept': 'application/json, text/javascript, */*; q=0.01',
         'X-Requested-With': 'XMLHttpRequest'
     });
-    await page.goto(siteInfo.APPOINTMENTS_JSON_URL);
+    await page.goto(siteInfo.APPOINTMENTS_JSON_URL, {timeout: 0});
 
     const originalPageContent = await page.content();
     const bodyText = await page.evaluate(() => {
