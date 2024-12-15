@@ -20,6 +20,10 @@ module.exports = {
 
     get LOGIN_URL () {
       return `https://ais.usvisa-info.com/${this.COUNTRY_CODE}/niv/users/sign_in`
+    },
+
+    get BASE_DATA_URL () {
+      return `https://ais.usvisa-info.com/${this.COUNTRY_CODE}/niv`
     }
   },
   IS_PROD: process.env.NODE_ENV === 'prod',

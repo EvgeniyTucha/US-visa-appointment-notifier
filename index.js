@@ -90,6 +90,46 @@ const notifyMeViaTelegram = async (earliestDate, availableTimes) => {
 }
 
 
+const getMainPageDetails = async (page) => {
+    logStep('checking main page details for current booking date');
+    await page.setExtraHTTPHeaders({
+        'Accept': 'application/json, text/javascript, */*; q=0.01',
+        'X-Requested-With': 'XMLHttpRequest'
+    });
+
+    await page.goto(siteInfo.BASE_DATA_URL);
+
+    const originalPageContent = await page.content();
+
+    try {
+        const bodyText = await page.evaluate(() => {
+            return document.querySelector('.consular-appt').innerText
+        });
+
+        const match = bodyText.match(/(\d{1,2} \w+, \d{4}, \d{2}:\d{2})/);
+
+        if (match) {
+            console.log(match[1]); // Output: 10 April, 2026, 09:45 Vancouver local time
+        } else {
+            console.log("No match found");
+        }
+        // Vancouver is in GMT-7 for local time
+        const parsedDate = new Date(match[1] + " GMT-7");
+        logStep(`Parsed booked date: ${parsedDate} from profile`);
+
+        // console.log("Parsed Date:", parsedDate.toISOString()); // Outputs date in ISO 8601 format
+
+        // Subtract 2 days
+        const twoDaysInMilliseconds = 2 * 24 * 60 * 60 * 1000; // 2 days in milliseconds
+        const newDate = new Date(parsedDate.getTime() - twoDaysInMilliseconds);
+        logStep(`Booked date -2 days to compare: ${newDate}`);
+        return newDate;
+    } catch (err) {
+        console.log("Unable to parse details page content", originalPageContent);
+        console.error(err)
+    }
+}
+
 const checkForSchedules = async (page) => {
     logStep('checking for schedules');
     await page.setExtraHTTPHeaders({
@@ -174,13 +214,16 @@ const process = async () => {
 
             await login(page);
 
-            // todo: test
-            await notifyMeViaTelegram('2026-11-11', ['10:30']);
-            let availableTimes = await checkForAvailableTimes(page, '2026-11-11');
+            const currentDate = await getMainPageDetails(page);
+
+            // let availableTimes = await checkForAvailableTimes(page, '2026-11-11');
             // todo: test
 
-            const earliestDate = await checkForSchedules(page);
-            if (earliestDate) {
+            const checkForScheduleDate = await checkForSchedules(page);
+
+            if (checkForScheduleDate) {
+                const earliestDate = currentDate.getTime() < checkForScheduleDate.getTime() ? currentDate : checkForScheduleDate;
+
                 let earliestDateStr = format(earliestDate, 'yyyy-MM-dd');
                 let availableTimes = await checkForAvailableTimes(page, earliestDateStr);
 
