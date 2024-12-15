@@ -71,13 +71,7 @@ const notifyMeViaTelegram = async (earliestDate, availableTimes) => {
 
     const bot = new TelegramBot(botToken, { polling: true });
 
-    // bot.on('message', (msg) => {
-    //     console.log(`Group Chat ID: ${msg.chat.id}`);
-    //     bot.sendMessage(msg.chat.id, `This group's chat ID is: ${msg.chat.id}`);
-    // });
-
-    const formattedDate = earliestDate;
-    // const formattedDate = format(earliestDate, 'dd-MM-yyyy');
+    const formattedDate = format(earliestDate, 'dd-MM-yyyy');
     logStep(`sending an TG notification to schedule for ${formattedDate}. Available times are: ${availableTimes}`);
     // Send a notification
     const sendNotification = (message) => {
@@ -216,13 +210,10 @@ const process = async () => {
 
             const currentDate = await getMainPageDetails(page);
 
-            // let availableTimes = await checkForAvailableTimes(page, '2026-11-11');
-            // todo: test
-
             const checkForScheduleDate = await checkForSchedules(page);
 
             if (checkForScheduleDate) {
-                const earliestDate = currentDate.getTime() < checkForScheduleDate.getTime() ? currentDate : checkForScheduleDate;
+                const earliestDate = findEarliestDate([currentDate, checkForScheduleDate]);
 
                 let earliestDateStr = format(earliestDate, 'yyyy-MM-dd');
                 let availableTimes = await checkForAvailableTimes(page, earliestDateStr);
@@ -270,3 +261,9 @@ function getAvailableTimesUrl(availableDate) {
         console.error(err);
     }
 })();
+
+function findEarliestDate(dates) {
+    return dates.reduce((earliest, current) =>
+        current.getTime() < earliest.getTime() ? current : earliest
+    );
+}
