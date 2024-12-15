@@ -1,3 +1,4 @@
+const {th} = require("date-fns/locale");
 module.exports = {
   loginCred:{
     EMAIL: process.env.EMAIL,
@@ -13,6 +14,10 @@ module.exports = {
       return `https://ais.usvisa-info.com/${this.COUNTRY_CODE}/niv/schedule/${this.SCHEDULE_ID}/appointment/days/${this.FACILITY_ID}.json?appointments%5Bexpedite%5D=false`
     },
 
+    get AVAILABLE_TIMES_URL() {
+    return `https://ais.usvisa-info.com/${this.COUNTRY_CODE}/niv/schedule/${this.SCHEDULE_ID}/appointment/times/${this.FACILITY_ID}.json`
+    },
+
     get LOGIN_URL () {
       return `https://ais.usvisa-info.com/${this.COUNTRY_CODE}/niv/users/sign_in`
     }
@@ -25,6 +30,10 @@ module.exports = {
   WAKEUP_HOUR: process.env.WAKEUP_HOUR || 7, // in 24-hour format, i.e 07
 
   NOTIFY_EMAILS: process.env.NOTIFY_EMAILS, // comma separated list of emails
+  telegram: {
+    NOTIFY_TG_CHAT_ID: process.env.NOTIFY_TG_CHAT_ID, // chat id to send notification
+    NOTIFY_TG_TOKEN: process.env.NOTIFY_TG_TOKEN, // tg token
+  },
   mailgun: {
     USERNAME: process.env.MAILGUN_USERNAME,
     DOMAIN: process.env.MAILGUN_DOMAIN,

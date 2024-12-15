@@ -27,6 +27,7 @@
     "date-fns": "^2.29.2",
     "dotenv": "^16.0.1",
     "mailgun.js": "^8.0.0",
+    "node-telegram-bot-api": "^0.66.0",
     "puppeteer": "^23.9.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2"
