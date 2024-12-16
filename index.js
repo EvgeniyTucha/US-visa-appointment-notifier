@@ -63,6 +63,15 @@ const notifyMe = async (earliestDate, availableTimes) => {
     })
 }
 
+const reschedule = async (earliestDate, availableTimes) => {
+    const formattedDate = format(earliestDate, 'dd-MM-yyyy');
+    logStep(`sending an email to schedule for ${formattedDate}. Available times are: ${availableTimes}`);
+    await sendEmail({
+        subject: `We found an earlier date ${formattedDate}`,
+        text: `Hurry and schedule for ${formattedDate} before it is taken. Available times are: ${availableTimes}`
+    })
+}
+
 const notifyMeViaTelegram = async (earliestDate, availableTimes) => {
     const TelegramBot = require('node-telegram-bot-api');
 
@@ -222,7 +231,7 @@ const process = async () => {
 
                 let diff = Math.round((earliestDate - now) / (1000 * 60 * 60 * 24))
 
-                const row = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString() + "," + earliestDateStr + "," + diff + "\n"
+                const row = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString() + "," + earliestDateStr + "," + diff + "," + availableTimes + "\n"
 
                 fs.appendFile('./dates.csv', row, err => {
                     if (err) {
@@ -230,9 +239,10 @@ const process = async () => {
                     }
                 });
 
-                if (earliestDate && isBefore(earliestDate, parseISO(NOTIFY_ON_DATE_BEFORE))) {
+                if (earliestDate && availableTimes && isBefore(earliestDate, parseISO(NOTIFY_ON_DATE_BEFORE))) {
                     await notifyMeViaTelegram(earliestDate, availableTimes);
                     await notifyMe(earliestDate, availableTimes);
+                    // await reschedule(earliestDate, availableTimes);
                 }
             }
         } catch (err) {
