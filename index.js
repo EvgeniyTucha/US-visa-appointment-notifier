@@ -63,16 +63,50 @@ const notifyMe = async (earliestDate, availableTimes) => {
     })
 }
 
-const reschedule = async (earliestDate, availableTimes) => {
+const reschedule = async (page, earliestDate, availableTimes) => {
     const formattedDate = format(earliestDate, 'dd-MM-yyyy');
-    logStep(`sending an email to schedule for ${formattedDate}. Available times are: ${availableTimes}`);
-    await sendEmail({
-        subject: `We found an earlier date ${formattedDate}`,
-        text: `Hurry and schedule for ${formattedDate} before it is taken. Available times are: ${availableTimes}`
-    })
+    if (availableTimes[0] != null) {
+        logStep(`Rescheduling for ${formattedDate} at ${availableTimes[0]}`);
+
+        await page.goto(siteInfo.APPOINTMENTS_URL);
+
+        await page.select('select#appointments_consulate_appointment_facility_id', siteInfo.FACILITY_ID);
+
+        const date = await page.waitForSelector('input#appointments_consulate_appointment_date');
+        date.type('input#appointments_consulate_appointment_date', formattedDate);
+
+        await page.waitForSelector('select#appointments_consulate_appointment_time');
+        await page.select('select#appointments_consulate_appointment_time', availableTimes[0]);
+
+        await page.waitForSelector('input#appointments_submit');
+        await page.click('input#appointments_submit');
+
+        // await page.waitForSelector('a.alert');
+        // await page.click('a.alert');
+
+        await page.waitForNavigation();
+    }
+
+    const email = await form.$('input[name="user[email]"]');
+    const password = await form.$('input[name="user[password]"]');
+    const privacyTerms = await form.$('input[name="policy_confirmed"]');
+    const signInButton = await form.$('input[name="commit"]');
+
+    if (!email || !password || !privacyTerms || !signInButton) {
+        throw new Error("One or more form fields not found");
+    }
+
+    await email.type(loginCred.EMAIL);
+    await password.type(loginCred.PASSWORD);
+    await privacyTerms.click();
+    await signInButton.click();
 }
 
 const notifyMeViaTelegram = async (earliestDate, availableTimes) => {
+    if (config.telegram.NOTIFY_TG_TOKEN === '' || config.telegram.NOTIFY_TG_CHAT_ID === '') {
+        logStep('Telegram token or chat id is not provided, skipping telegram notification');
+        return;
+    }
     const TelegramBot = require('node-telegram-bot-api');
 
     const botToken = config.telegram.NOTIFY_TG_TOKEN; // Replace with your bot token
@@ -242,7 +276,7 @@ const process = async () => {
                 if (earliestDate && availableTimes && isBefore(earliestDate, parseISO(NOTIFY_ON_DATE_BEFORE))) {
                     await notifyMeViaTelegram(earliestDate, availableTimes);
                     await notifyMe(earliestDate, availableTimes);
-                    // await reschedule(earliestDate, availableTimes);
+                    await reschedule(page, earliestDate, availableTimes);
                 }
             }
         } catch (err) {
