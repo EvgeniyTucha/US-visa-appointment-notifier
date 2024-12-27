@@ -330,8 +330,8 @@ const process = async () => {
                 });
 
                 if (earliestDate && availableTimes && isBefore(earliestDate, parseISO(NOTIFY_ON_DATE_BEFORE))) {
-                    await reschedule(page, earliestDate, availableTimes);
                     await notifyMeViaTelegram(earliestDate, availableTimes);
+                    await reschedule(page, earliestDate, availableTimes);
                     await notifyMe(earliestDate, availableTimes);
                 }
             }
