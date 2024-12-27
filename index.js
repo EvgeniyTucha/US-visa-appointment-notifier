@@ -2,8 +2,9 @@ const puppeteer = require('puppeteer');
 const {parseISO, compareAsc, isBefore, format} = require('date-fns')
 require('dotenv').config();
 const fs = require('fs');
+const TelegramBot = require('node-telegram-bot-api');
 
-const {delay, sendEmail, logStep} = require('./utils');
+const {delay, sendEmail, logStep, debug} = require('./utils');
 const {
     siteInfo,
     loginCred,
@@ -64,7 +65,7 @@ const notifyMe = async (earliestDate, availableTimes) => {
 }
 
 const reschedule = async (page, earliestDate, availableTimes) => {
-    const formattedDate = format(earliestDate, 'dd-MM-yyyy');
+    const formattedDate = format(earliestDate, 'yyyy-MM-dd');
     if (availableTimes[0] != null) {
         logStep(`Rescheduling for ${formattedDate} at ${availableTimes[0]}`);
 
@@ -72,19 +73,70 @@ const reschedule = async (page, earliestDate, availableTimes) => {
 
         await page.select('select#appointments_consulate_appointment_facility_id', siteInfo.FACILITY_ID);
 
-        const date = await page.waitForSelector('input#appointments_consulate_appointment_date');
-        date.type('input#appointments_consulate_appointment_date', formattedDate);
+        const date = await page.waitForSelector("input#appointments_consulate_appointment_date");
 
-        await page.waitForSelector('select#appointments_consulate_appointment_time');
-        await page.select('select#appointments_consulate_appointment_time', availableTimes[0]);
+        await delayMs(1000);
+        await date.click();
+        await delayMs(1000);
+
+        // await debug(page, '#_1_appointments_consulate_appointment_before_date', true);
+
+        const [year, month, day] = formattedDate.split('-');
+
+        const zeroBasedMonth = parseInt(month, 10) - 1;
+
+        const tdSelector = `td.undefined[data-handler="selectDay"][data-event="click"][data-month="${zeroBasedMonth}"][data-year="${year}"]`;
+        const linkSelector = 'a.ui-state-default';
+        const nextButtonSelector = 'a.ui-datepicker-next[data-handler="next"]';
+
+        let isDateVisible = false;
+        while (!isDateVisible) {
+            // Check if the <td> element is in the DOM
+            isDateVisible = await page.evaluate((tdSelector) => {
+                return !!document.querySelector(tdSelector);
+            }, tdSelector);
+
+            // If not visible, click the "Next" button
+            if (!isDateVisible) {
+                await page.click(nextButtonSelector);
+                await delayMs(1000);
+            }
+        }
+
+        // Click the link inside the <td> element once it is visible
+        await page.evaluate((tdSelector, linkSelector) => {
+            const tdElement = document.querySelector(tdSelector);
+            if (tdElement) {
+                const linkElement = tdElement.querySelector(linkSelector);
+                if (linkElement) {
+                    linkElement.click();
+                } else {
+                    throw new Error('Link element not found inside the specified <td>.');
+                }
+            } else {
+                throw new Error('Specified <td> element not found.');
+            }
+        }, tdSelector, linkSelector);
+
+        console.log('Date clicked successfully.');
+
+        // await debug(page, '#_2_appointments_consulate_appointment_date', true);
+
+        const time = await page.waitForSelector('select#appointments_consulate_appointment_time');
+        time.select('select#appointments_consulate_appointment_time', availableTimes[0]);
+
+        // await debug(page, '#_3_appointments_consulate_appointment_time', true);
 
         await page.waitForSelector('input#appointments_submit');
         await page.click('input#appointments_submit');
 
-        // await page.waitForSelector('a.alert');
-        // await page.click('a.alert');
+        await debug(page, '#_4', true);
+
+        await page.waitForSelector('a.alert');
+        await page.click('a.alert');
 
         await page.waitForNavigation();
+        await debug(page, '#_5', true);
     }
 
     const email = await form.$('input[name="user[email]"]');
@@ -102,28 +154,31 @@ const reschedule = async (page, earliestDate, availableTimes) => {
     await signInButton.click();
 }
 
+// Send a notification to telegram
+const sendTelegramNotification = (message) => {
+    const botToken = config.telegram.NOTIFY_TG_TOKEN; // Replace with your bot token
+    const chatId = config.telegram.NOTIFY_TG_CHAT_ID; // Replace with the group's chat ID
+
+    const bot = new TelegramBot(botToken, {polling: true});
+
+    const sendNotification = (message) => {
+        bot.sendMessage(chatId, message)
+            .then(() => console.log('Notification sent!'))
+            .catch((err) => console.error('Error sending notification:', err));
+    }
+    sendNotification(message);
+};
+
+
 const notifyMeViaTelegram = async (earliestDate, availableTimes) => {
     if (config.telegram.NOTIFY_TG_TOKEN === '' || config.telegram.NOTIFY_TG_CHAT_ID === '') {
         logStep('Telegram token or chat id is not provided, skipping telegram notification');
         return;
     }
-    const TelegramBot = require('node-telegram-bot-api');
-
-    const botToken = config.telegram.NOTIFY_TG_TOKEN; // Replace with your bot token
-    const chatId = config.telegram.NOTIFY_TG_CHAT_ID; // Replace with the group's chat ID
-
-    const bot = new TelegramBot(botToken, { polling: true });
-
     const formattedDate = format(earliestDate, 'dd-MM-yyyy');
     logStep(`sending an TG notification to schedule for ${formattedDate}. Available times are: ${availableTimes}`);
-    // Send a notification
-    const sendNotification = (message) => {
-        bot.sendMessage(chatId, message)
-            .then(() => console.log('Notification sent!'))
-            .catch((err) => console.error('Error sending notification:', err));
-    };
 
-    sendNotification(`Hurry and schedule for ${formattedDate} before it is taken. Available times are: ${availableTimes}`);
+    sendTelegramNotification(`Hurry and schedule for ${formattedDate} before it is taken. Available times are: ${availableTimes}`);
 }
 
 
@@ -244,6 +299,7 @@ const process = async () => {
     } else {
         try {
             if (maxTries-- <= 0) {
+                sendTelegramNotification('Max retries reached. Please restart the process.');
                 console.log('Reached Max tries')
                 return
             }
@@ -274,9 +330,9 @@ const process = async () => {
                 });
 
                 if (earliestDate && availableTimes && isBefore(earliestDate, parseISO(NOTIFY_ON_DATE_BEFORE))) {
+                    await reschedule(page, earliestDate, availableTimes);
                     await notifyMeViaTelegram(earliestDate, availableTimes);
                     await notifyMe(earliestDate, availableTimes);
-                    await reschedule(page, earliestDate, availableTimes);
                 }
             }
         } catch (err) {
@@ -310,4 +366,8 @@ function findEarliestDate(dates) {
     return dates.reduce((earliest, current) =>
         current.getTime() < earliest.getTime() ? current : earliest
     );
+}
+
+async function delayMs(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
