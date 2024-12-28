@@ -65,7 +65,7 @@ const notifyMe = async (earliestDate, availableTimes) => {
 }
 
 const reschedule = async (page, earliestDate, availableTimes) => {
-    const formattedDate = format(earliestDate, 'yyyy-MM-dd');
+    const formattedDate = format(earliestDate, 'dd-MM-yyyy');
     if (availableTimes[0] != null) {
         logStep(`Rescheduling for ${formattedDate} at ${availableTimes[0]}`);
 
@@ -81,7 +81,7 @@ const reschedule = async (page, earliestDate, availableTimes) => {
 
         // await debug(page, '#_1_appointments_consulate_appointment_before_date', true);
 
-        const [year, month, day] = formattedDate.split('-');
+        const [day, month, year] = formattedDate.split('-');
 
         const zeroBasedMonth = parseInt(month, 10) - 1;
 
@@ -120,38 +120,35 @@ const reschedule = async (page, earliestDate, availableTimes) => {
 
         console.log('Date clicked successfully.');
 
+        await delayMs(500);
+
         // await debug(page, '#_2_appointments_consulate_appointment_date', true);
 
         const time = await page.waitForSelector('select#appointments_consulate_appointment_time');
         time.select('select#appointments_consulate_appointment_time', availableTimes[0]);
 
+        await delayMs(500);
         // await debug(page, '#_3_appointments_consulate_appointment_time', true);
 
         await page.waitForSelector('input#appointments_submit');
         await page.click('input#appointments_submit');
 
-        await debug(page, '#_4', true);
+        await delayMs(500);
 
-        await page.waitForSelector('a.alert');
-        await page.click('a.alert');
+        await debug(page, '#_4_0', true);
+
+        const confirmButtonSelector = 'div[data-confirm-footer] a.button.alert';
+
+        // Wait for the Confirm button to be visible on the page
+        await page.waitForSelector(confirmButtonSelector, { visible: true });
+
+        // Click the Confirm button
+        await page.click(confirmButtonSelector);
+        await debug(page, '#_4_1', true);
 
         await page.waitForNavigation();
         await debug(page, '#_5', true);
     }
-
-    const email = await form.$('input[name="user[email]"]');
-    const password = await form.$('input[name="user[password]"]');
-    const privacyTerms = await form.$('input[name="policy_confirmed"]');
-    const signInButton = await form.$('input[name="commit"]');
-
-    if (!email || !password || !privacyTerms || !signInButton) {
-        throw new Error("One or more form fields not found");
-    }
-
-    await email.type(loginCred.EMAIL);
-    await password.type(loginCred.PASSWORD);
-    await privacyTerms.click();
-    await signInButton.click();
 }
 
 // Send a notification to telegram
