@@ -19,6 +19,9 @@ const {th} = require("date-fns/locale");
 const config = require("./config");
 
 let maxTries = MAX_NUMBER_OF_POLL
+const botToken = config.telegram.NOTIFY_TG_TOKEN;
+const chatId = config.telegram.NOTIFY_TG_CHAT_ID;
+const bot = new TelegramBot(botToken, {polling: true});
 
 const login = async (page) => {
     logStep('logging in');
@@ -153,11 +156,6 @@ const reschedule = async (page, earliestDate, availableTimes) => {
 
 // Send a notification to telegram
 const sendTelegramNotification = (message) => {
-    const botToken = config.telegram.NOTIFY_TG_TOKEN; // Replace with your bot token
-    const chatId = config.telegram.NOTIFY_TG_CHAT_ID; // Replace with the group's chat ID
-
-    const bot = new TelegramBot(botToken, {polling: true});
-
     const sendNotification = (message) => {
         bot.sendMessage(chatId, message)
             .then(() => console.log('Notification sent!'))
