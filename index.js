@@ -74,16 +74,14 @@ const reschedule = async (page, earliestDate, availableTimes) => {
 
         const date = await page.waitForSelector("input#appointments_consulate_appointment_date");
 
-        await delayMs(1000);
-
         logStep('Rescheduling step #2 date selector');
 
-        await date.click();
+        await date.evaluate((el) => el.click()); // Ensure interactive click
         await delayMs(1000);
 
         logStep('Rescheduling step #2.1 date selector clicked');
 
-        // await debug(page, '#_1_appointments_consulate_appointment_before_date', true);
+        await debug(page, '#_1_appointments_consulate_appointment_before_date', true);
 
         const [day, month, year] = formattedDate.split('-');
 
@@ -127,8 +125,8 @@ const reschedule = async (page, earliestDate, availableTimes) => {
         await delayMs(500);
 
         const timeSelector = 'select#appointments_consulate_appointment_time';
-        const time = await page.waitForSelector(timeSelector);
-        time.select(timeSelector, availableTimes[0]);
+        await page.waitForSelector(timeSelector);
+        await page.select(timeSelector, availableTimes[0]);
 
         await delayMs(500);
         logStep('Rescheduling step #3 time clicked');
