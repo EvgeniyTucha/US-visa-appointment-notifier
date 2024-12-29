@@ -23,14 +23,7 @@ const bot = new TelegramBot(botToken, {polling: true});
 
 const login = async (page) => {
     logStep('logging in');
-    const response = await page.goto(siteInfo.LOGIN_URL);
-    // console.log(response.status());
-    // console.log(response.headers());
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36');
-
-    // Wait for the form to be available
-    // await page.waitForSelector("form#sign_in_form");
-    // console.log(await page.content());
 
     const form = await page.$("form#sign_in_form");
     if (!form) {
@@ -130,14 +123,16 @@ const reschedule = async (page, earliestDate, availableTimes) => {
 
         await delayMs(500);
 
-        const time = await page.waitForSelector('select#appointments_consulate_appointment_time');
-        time.select('select#appointments_consulate_appointment_time', availableTimes[0]);
+        const timeSelector = 'select#appointments_consulate_appointment_time';
+        const time = await page.waitForSelector(timeSelector);
+        time.select(timeSelector, availableTimes[0]);
 
         await delayMs(500);
         logStep('Rescheduling step #3 time clicked');
 
-        await page.waitForSelector('input#appointments_submit');
-        await page.click('input#appointments_submit');
+        const submitButtonSelector = 'input#appointments_submit';
+        await page.waitForSelector(submitButtonSelector);
+        await page.click(submitButtonSelector);
 
         await delayMs(500);
 
@@ -239,7 +234,6 @@ const checkForAvailableTimes = async (page, earliestDateStr) => {
     const url = getAvailableTimesUrl(earliestDateStr);
     await page.goto(url);
 
-    const originalPageContent = await page.content();
     const bodyText = await page.evaluate(() => {
         return document.querySelector('body').innerText
     });
