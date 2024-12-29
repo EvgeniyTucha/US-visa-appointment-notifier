@@ -1,4 +1,4 @@
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-extra');
 const {parseISO, compareAsc, isBefore, format} = require('date-fns')
 require('dotenv').config();
 const fs = require('fs');
@@ -74,12 +74,12 @@ const reschedule = async (page, earliestDate, availableTimes) => {
 
         const date = await page.waitForSelector("input#appointments_consulate_appointment_date");
 
-        await delayMs(500);
+        await delayMs(1000);
 
         logStep('Rescheduling step #2 date selector');
 
         await date.click();
-        await delayMs(500);
+        await delayMs(1000);
 
         logStep('Rescheduling step #2.1 date selector clicked');
 
@@ -103,7 +103,7 @@ const reschedule = async (page, earliestDate, availableTimes) => {
             // If not visible, click the "Next" button
             if (!isDateVisible) {
                 await page.click(nextButtonSelector);
-                await delayMs(500);
+                await delayMs(1000);
             }
         }
 
@@ -252,7 +252,6 @@ const checkForAvailableTimes = async (page, earliestDateStr) => {
 }
 
 const process = async () => {
-    const puppeteer = require('puppeteer-extra');
     const StealthPlugin = require('puppeteer-extra-plugin-stealth');
     puppeteer.use(StealthPlugin());
     const browser = await puppeteer.launch(!IS_PROD ? {headless: false} : {args: ['--no-sandbox', '--disable-setuid-sandbox']});
