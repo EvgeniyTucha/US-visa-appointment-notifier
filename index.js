@@ -23,6 +23,9 @@ const bot = new TelegramBot(botToken, {polling: true});
 
 const login = async (page) => {
     logStep('logging in');
+
+    await page.goto(siteInfo.LOGIN_URL);
+
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36');
 
     const form = await page.$("form#sign_in_form");
