@@ -76,11 +76,18 @@ const reschedule = async (page, earliestDate, availableTimes) => {
 
         await page.select('select#appointments_consulate_appointment_facility_id', siteInfo.FACILITY_ID);
 
+        logStep('Rescheduling step #1 facility selected');
+
         const date = await page.waitForSelector("input#appointments_consulate_appointment_date");
 
-        await delayMs(1000);
+        await delayMs(500);
+
+        logStep('Rescheduling step #2 date selector');
+
         await date.click();
-        await delayMs(1000);
+        await delayMs(500);
+
+        logStep('Rescheduling step #2.1 date selector clicked');
 
         // await debug(page, '#_1_appointments_consulate_appointment_before_date', true);
 
@@ -102,7 +109,7 @@ const reschedule = async (page, earliestDate, availableTimes) => {
             // If not visible, click the "Next" button
             if (!isDateVisible) {
                 await page.click(nextButtonSelector);
-                await delayMs(1000);
+                await delayMs(500);
             }
         }
 
@@ -121,49 +128,38 @@ const reschedule = async (page, earliestDate, availableTimes) => {
             }
         }, tdSelector, linkSelector);
 
-        console.log('Date clicked successfully.');
+        logStep('Rescheduling step #2.2 date selector clicked');
 
         await delayMs(500);
-
-        // await debug(page, '#_2_appointments_consulate_appointment_date', true);
 
         const time = await page.waitForSelector('select#appointments_consulate_appointment_time');
         time.select('select#appointments_consulate_appointment_time', availableTimes[0]);
 
         await delayMs(500);
-        // await debug(page, '#_3_appointments_consulate_appointment_time', true);
+        logStep('Rescheduling step #3 time clicked');
 
         await page.waitForSelector('input#appointments_submit');
         await page.click('input#appointments_submit');
 
         await delayMs(500);
 
-        await debug(page, '#_4_0', true);
+        logStep('Rescheduling step #4 submit button clicked');
 
         const confirmButtonSelector = 'div[data-confirm-footer] a.button.alert';
 
         // Wait for the Confirm button to be visible on the page
-        await page.waitForSelector(confirmButtonSelector, { visible: true });
-
-        // Click the Confirm button
+        await page.waitForSelector(confirmButtonSelector, {visible: true});
         await page.click(confirmButtonSelector);
-        await debug(page, '#_4_1', true);
 
-        await page.waitForNavigation();
-        await debug(page, '#_5', true);
+        await sendTelegramNotification(`Booking for ${formattedDate} at ${availableTimes[0]} completed`);
     }
 }
 
-// Send a notification to telegram
-const sendTelegramNotification = (message) => {
-    const sendNotification = (message) => {
-        bot.sendMessage(chatId, message)
-            .then(() => console.log('Notification sent!'))
-            .catch((err) => console.error('Error sending notification:', err));
-    }
-    sendNotification(message);
+const sendTelegramNotification = async (message) => {
+    bot.sendMessage(chatId, message)
+        .then(() => console.log('Notification sent!'))
+        .catch((err) => console.error('Error sending notification:', err));
 };
-
 
 const notifyMeViaTelegram = async (earliestDate, availableTimes) => {
     if (config.telegram.NOTIFY_TG_TOKEN === '' || config.telegram.NOTIFY_TG_CHAT_ID === '') {
@@ -173,7 +169,7 @@ const notifyMeViaTelegram = async (earliestDate, availableTimes) => {
     const formattedDate = format(earliestDate, 'dd-MM-yyyy');
     logStep(`sending an TG notification to schedule for ${formattedDate}. Available times are: ${availableTimes}`);
 
-    sendTelegramNotification(`Hurry and schedule for ${formattedDate} before it is taken. Available times are: ${availableTimes}`);
+    await sendTelegramNotification(`Hurry and schedule for ${formattedDate} before it is taken. Available times are: ${availableTimes}`);
 }
 
 
@@ -294,7 +290,7 @@ const process = async () => {
     } else {
         try {
             if (maxTries-- <= 0) {
-                sendTelegramNotification('Max retries reached. Please restart the process.');
+                await sendTelegramNotification('Max retries reached. Please restart the process.');
                 console.log('Reached Max tries')
                 return
             }
