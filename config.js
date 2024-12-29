@@ -34,6 +34,7 @@ module.exports = {
     NEXT_SCHEDULE_POLL_MIN: process.env.NEXT_SCHEDULE_POLL_MIN || 15, // default to 15 minutes
     MAX_NUMBER_OF_POLL: process.env.MAX_NUMBER_OF_POLL || 250, // number of polls before stopping
     NOTIFY_ON_DATE_BEFORE: process.env.NOTIFY_ON_DATE_BEFORE, // in ISO format i.e YYYY-MM-DD
+    EARLIEST_DATE_SHIFT: process.env.EARLIEST_DATE_SHIFT || 1, // default to 1 day shift
 
     NOTIFY_EMAILS: process.env.NOTIFY_EMAILS, // comma separated list of emails
     telegram: {

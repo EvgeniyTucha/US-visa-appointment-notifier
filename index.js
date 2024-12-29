@@ -3,6 +3,7 @@ const {parseISO, compareAsc, isBefore, format} = require('date-fns')
 require('dotenv').config();
 const fs = require('fs');
 const TelegramBot = require('node-telegram-bot-api');
+const dateFormat = 'yyyy-MM-dd';
 
 const {delay, sendEmail, logStep, debug} = require('./utils');
 const {
@@ -11,7 +12,8 @@ const {
     IS_PROD,
     NEXT_SCHEDULE_POLL_MIN,
     MAX_NUMBER_OF_POLL,
-    NOTIFY_ON_DATE_BEFORE
+    NOTIFY_ON_DATE_BEFORE,
+    EARLIEST_DATE_SHIFT
 } = require('./config');
 const {th} = require("date-fns/locale");
 const config = require("./config");
@@ -53,7 +55,7 @@ const login = async (page) => {
 }
 
 const notifyMe = async (earliestDate, availableTimes) => {
-    const formattedDate = format(earliestDate, 'dd-MM-yyyy');
+    const formattedDate = format(earliestDate, dateFormat);
     logStep(`sending an email to schedule for ${formattedDate}. Available times are: ${availableTimes}`);
     await sendEmail({
         subject: `We found an earlier date ${formattedDate}`,
@@ -62,7 +64,7 @@ const notifyMe = async (earliestDate, availableTimes) => {
 }
 
 const reschedule = async (page, earliestDate, availableTimes) => {
-    const formattedDate = format(earliestDate, 'dd-MM-yyyy');
+    const formattedDate = format(earliestDate, dateFormat);
     if (availableTimes[0] != null) {
         logStep(`Rescheduling for ${formattedDate} at ${availableTimes[0]}`);
 
@@ -81,9 +83,7 @@ const reschedule = async (page, earliestDate, availableTimes) => {
 
         logStep('Rescheduling step #2.1 date selector clicked');
 
-        await debug(page, '#_1_appointments_consulate_appointment_before_date', true);
-
-        const [day, month, year] = formattedDate.split('-');
+        const [year, month, day] = formattedDate.split('-');
 
         const zeroBasedMonth = parseInt(month, 10) - 1;
 
@@ -96,20 +96,20 @@ const reschedule = async (page, earliestDate, availableTimes) => {
         const maxAttempts = 24; // Adjust based on reasonable maximum clicks needed
 
         while (!isDateVisible && attempts < maxAttempts) {
-            // Check if the <td> element is in the DOM
+            logStep(`Attempt ${attempts}: Checking for date visibility...`);
             isDateVisible = await page.evaluate((tdSelector) => {
                 return !!document.querySelector(tdSelector);
             }, tdSelector);
 
-            // If not visible, click the "Next" button
             if (!isDateVisible) {
+                logStep('Date not visible, clicking next...');
                 await page.click(nextButtonSelector);
                 await delayMs(1000);
                 attempts++;
             }
         }
         if (!isDateVisible) {
-            throw new Error(`Failed to find the desired date after ${maxAttempts} attempts.`);
+            throw new Error(`Failed to find the desired date (${formattedDate}) after ${maxAttempts} attempts. Possible DOM structure issue.`);
         }
 
         // Click the link inside the <td> element once it is visible
@@ -153,6 +153,7 @@ const reschedule = async (page, earliestDate, availableTimes) => {
         await page.click(confirmButtonSelector);
 
         await sendTelegramNotification(`Booking for ${formattedDate} at ${availableTimes[0]} completed`);
+        await sendTelegramScreenshot(page, `reschedule_finished_${formattedDate}`);
     }
 }
 
@@ -162,12 +163,21 @@ const sendTelegramNotification = async (message) => {
         .catch((err) => console.error('Error sending notification:', err));
 };
 
+const sendTelegramScreenshot = async (page, fileName) => {
+    const logName = `${fileName}.png`;
+    await page.screenshot({ path:  logName});
+
+    bot.sendPhoto(chatId, logName)
+        .then(() => console.log('Screenshot sent!'))
+        .catch((err) => console.error('Error sending screenshot:', err));
+};
+
 const notifyMeViaTelegram = async (earliestDate, availableTimes) => {
     if (config.telegram.NOTIFY_TG_TOKEN === '' || config.telegram.NOTIFY_TG_CHAT_ID === '') {
         logStep('Telegram token or chat id is not provided, skipping telegram notification');
         return;
     }
-    const formattedDate = format(earliestDate, 'dd-MM-yyyy');
+    const formattedDate = format(earliestDate, dateFormat);
     logStep(`sending an TG notification to schedule for ${formattedDate}. Available times are: ${availableTimes}`);
 
     await sendTelegramNotification(`Hurry and schedule for ${formattedDate} before it is taken. Available times are: ${availableTimes}`);
@@ -189,11 +199,6 @@ const getMainPageDetails = async (page) => {
 
     const match = bodyText.match(/(\d{1,2} \w+, \d{4}, \d{2}:\d{2})/);
 
-    if (match) {
-        console.log(match[1]); // Output: 10 April, 2026, 09:45 Vancouver local time
-    } else {
-        console.log("No match found");
-    }
     // Vancouver is in GMT-7 for local time
     const parsedDate = new Date(match[1] + " GMT-7");
     logStep(`Parsed booked date: ${parsedDate} from profile`);
@@ -264,6 +269,7 @@ const process = async () => {
     logStep(`starting process with ${maxTries} tries left`);
 
     const now = new Date();
+    const page = await browser.newPage();
 
     try {
         if (maxTries-- <= 0) {
@@ -271,7 +277,6 @@ const process = async () => {
             console.log('Reached Max tries')
             return
         }
-        const page = await browser.newPage();
 
         await login(page);
 
@@ -282,30 +287,38 @@ const process = async () => {
         if (checkForScheduleDate) {
             const earliestDate = findEarliestDate([currentDate, checkForScheduleDate]);
 
-            let earliestDateStr = format(earliestDate, 'yyyy-MM-dd');
+            let earliestDateStr = format(earliestDate, dateFormat);
             let availableTimes = await checkForAvailableTimes(page, earliestDateStr);
 
-            logStep(`Earliest date found is ${earliestDateStr}, available times are ${availableTimes}`);
+            if (earliestDate && availableTimes) {
+                logStep(`Earliest date found is ${earliestDateStr}, available times are ${availableTimes}`);
 
-            let diff = Math.round((earliestDate - now) / (1000 * 60 * 60 * 24))
-
-            const row = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString() + "," + earliestDateStr + "," + diff + "," + availableTimes + "\n"
-
-            fs.appendFile('./dates.csv', row, err => {
-                if (err) {
-                    console.error(err);
+                let shiftDate = addDays(now, EARLIEST_DATE_SHIFT);
+                if (isBefore(earliestDate, shiftDate)) {
+                    logStep(`Earliest date ${earliestDateStr} is before minimum allowed date ${shiftDate}`);
+                    throw new Error(`Earliest date ${earliestDateStr} is before minimum allowed date ${shiftDate}`);
                 }
-            });
 
-            if (earliestDate && availableTimes && isBefore(earliestDate, parseISO(NOTIFY_ON_DATE_BEFORE))) {
-                await notifyMeViaTelegram(earliestDate, availableTimes);
-                await reschedule(page, earliestDate, availableTimes);
-                await notifyMe(earliestDate, availableTimes);
+                let diff = Math.round((earliestDate - now) / (1000 * 60 * 60 * 24))
+
+                const row = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString() + "," + earliestDateStr + "," + diff + "," + availableTimes + "\n"
+
+                fs.appendFile('./dates.csv', row, err => {
+                    if (err) {
+                        console.error(err);
+                    }
+                });
+                if (isBefore(earliestDate, parseISO(NOTIFY_ON_DATE_BEFORE))) {
+                    await notifyMeViaTelegram(earliestDate, availableTimes);
+                    await reschedule(page, earliestDate, availableTimes);
+                }
             }
         }
     } catch (err) {
         console.error(err);
         await sendTelegramNotification(`Huston we have a problem: ${err}`);
+        const formattedDate = format(now, dateFormat);
+        await sendTelegramScreenshot(page, `error_on_date_${formattedDate}`);
     }
 
     await browser.close();
@@ -334,6 +347,12 @@ function findEarliestDate(dates) {
     return dates.reduce((earliest, current) =>
         current.getTime() < earliest.getTime() ? current : earliest
     );
+}
+
+function addDays(date, days) {
+    const result = new Date(date);
+    result.setDate(result.getDate() + days);
+    return result;
 }
 
 async function delayMs(ms) {
