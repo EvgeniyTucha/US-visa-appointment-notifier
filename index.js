@@ -11,9 +11,7 @@ const {
     IS_PROD,
     NEXT_SCHEDULE_POLL_MIN,
     MAX_NUMBER_OF_POLL,
-    NOTIFY_ON_DATE_BEFORE,
-    SLEEP_HOUR,
-    WAKEUP_HOUR
+    NOTIFY_ON_DATE_BEFORE
 } = require('./config');
 const {th} = require("date-fns/locale");
 const config = require("./config");
@@ -182,35 +180,28 @@ const getMainPageDetails = async (page) => {
 
     await page.goto(siteInfo.BASE_DATA_URL);
 
-    const originalPageContent = await page.content();
+    const bodyText = await page.evaluate(() => {
+        return document.querySelector('.consular-appt').innerText
+    });
 
-    try {
-        const bodyText = await page.evaluate(() => {
-            return document.querySelector('.consular-appt').innerText
-        });
+    const match = bodyText.match(/(\d{1,2} \w+, \d{4}, \d{2}:\d{2})/);
 
-        const match = bodyText.match(/(\d{1,2} \w+, \d{4}, \d{2}:\d{2})/);
-
-        if (match) {
-            console.log(match[1]); // Output: 10 April, 2026, 09:45 Vancouver local time
-        } else {
-            console.log("No match found");
-        }
-        // Vancouver is in GMT-7 for local time
-        const parsedDate = new Date(match[1] + " GMT-7");
-        logStep(`Parsed booked date: ${parsedDate} from profile`);
-
-        // console.log("Parsed Date:", parsedDate.toISOString()); // Outputs date in ISO 8601 format
-
-        // Subtract 2 days
-        const twoDaysInMilliseconds = 2 * 24 * 60 * 60 * 1000; // 2 days in milliseconds
-        const newDate = new Date(parsedDate.getTime() - twoDaysInMilliseconds);
-        logStep(`Booked date -2 days to compare: ${newDate}`);
-        return newDate;
-    } catch (err) {
-        console.log("Unable to parse details page content", originalPageContent);
-        console.error(err)
+    if (match) {
+        console.log(match[1]); // Output: 10 April, 2026, 09:45 Vancouver local time
+    } else {
+        console.log("No match found");
     }
+    // Vancouver is in GMT-7 for local time
+    const parsedDate = new Date(match[1] + " GMT-7");
+    logStep(`Parsed booked date: ${parsedDate} from profile`);
+
+    // console.log("Parsed Date:", parsedDate.toISOString()); // Outputs date in ISO 8601 format
+
+    // Subtract 2 days
+    const twoDaysInMilliseconds = 2 * 24 * 60 * 60 * 1000; // 2 days in milliseconds
+    const newDate = new Date(parsedDate.getTime() - twoDaysInMilliseconds);
+    logStep(`Booked date -2 days to compare: ${newDate}`);
+    return newDate;
 }
 
 const checkForSchedules = async (page) => {
@@ -221,26 +212,20 @@ const checkForSchedules = async (page) => {
     });
     await page.goto(siteInfo.APPOINTMENTS_JSON_URL);
 
-    const originalPageContent = await page.content();
     const bodyText = await page.evaluate(() => {
         return document.querySelector('body').innerText
     });
 
-    try {
-        const parsedBody = JSON.parse(bodyText);
+    const parsedBody = JSON.parse(bodyText);
 
-        if (!Array.isArray(parsedBody)) {
-            throw "Failed to parse dates, probably because you are not logged in";
-        }
-
-        const dates = parsedBody.map(item => parseISO(item.date));
-        const [earliest] = dates.sort(compareAsc)
-
-        return earliest;
-    } catch (err) {
-        console.log("Unable to parse page JSON content", originalPageContent);
-        console.error(err)
+    if (!Array.isArray(parsedBody)) {
+        throw "Failed to parse dates, probably because you are not logged in";
     }
+
+    const dates = parsedBody.map(item => parseISO(item.date));
+    const [earliest] = dates.sort(compareAsc)
+
+    return earliest;
 }
 
 const checkForAvailableTimes = async (page, earliestDateStr) => {
@@ -259,19 +244,14 @@ const checkForAvailableTimes = async (page, earliestDateStr) => {
         return document.querySelector('body').innerText
     });
 
-    try {
-        const parsedBody = JSON.parse(bodyText);
-        const availableTimes = parsedBody.available_times;
-        if (availableTimes.length > 0 && availableTimes[0] == null) {
-            logStep(`NO available times for the date : ${earliestDateStr} response : ${JSON.stringify(parsedBody)}`);
-            return;
-        }
-        logStep(`available time for the date : ${earliestDateStr} is : ${availableTimes} :: response : ${JSON.stringify(parsedBody)}`);
-        return availableTimes;
-    } catch (err) {
-        console.log("Unable to parse page JSON content", originalPageContent);
-        console.error(err)
+    const parsedBody = JSON.parse(bodyText);
+    const availableTimes = parsedBody.available_times;
+    if (availableTimes.length > 0 && availableTimes[0] == null) {
+        logStep(`NO available times for the date : ${earliestDateStr} response : ${JSON.stringify(parsedBody)}`);
+        return;
     }
+    logStep(`available time for the date : ${earliestDateStr} is : ${availableTimes} :: response : ${JSON.stringify(parsedBody)}`);
+    return availableTimes;
 }
 
 const process = async () => {
@@ -283,55 +263,51 @@ const process = async () => {
     logStep(`starting process with ${maxTries} tries left`);
 
     const now = new Date();
-    const currentHour = now.getHours()
 
-    if (currentHour >= SLEEP_HOUR || currentHour < WAKEUP_HOUR) {
-        logStep("After hours, doing nothing")
-    } else {
-        try {
-            if (maxTries-- <= 0) {
-                await sendTelegramNotification('Max retries reached. Please restart the process.');
-                console.log('Reached Max tries')
-                return
-            }
-            const page = await browser.newPage();
-
-            await login(page);
-
-            const currentDate = await getMainPageDetails(page);
-
-            const checkForScheduleDate = await checkForSchedules(page);
-
-            if (checkForScheduleDate) {
-                const earliestDate = findEarliestDate([currentDate, checkForScheduleDate]);
-
-                let earliestDateStr = format(earliestDate, 'yyyy-MM-dd');
-                let availableTimes = await checkForAvailableTimes(page, earliestDateStr);
-
-                logStep(`Earliest date found is ${earliestDateStr}, available times are ${availableTimes}`);
-
-                let diff = Math.round((earliestDate - now) / (1000 * 60 * 60 * 24))
-
-                const row = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString() + "," + earliestDateStr + "," + diff + "," + availableTimes + "\n"
-
-                fs.appendFile('./dates.csv', row, err => {
-                    if (err) {
-                        console.error(err);
-                    }
-                });
-
-                if (earliestDate && availableTimes && isBefore(earliestDate, parseISO(NOTIFY_ON_DATE_BEFORE))) {
-                    await notifyMeViaTelegram(earliestDate, availableTimes);
-                    await reschedule(page, earliestDate, availableTimes);
-                    await notifyMe(earliestDate, availableTimes);
-                }
-            }
-        } catch (err) {
-            console.error(err);
+    try {
+        if (maxTries-- <= 0) {
+            await sendTelegramNotification('Max retries reached. Please restart the process.');
+            console.log('Reached Max tries')
+            return
         }
+        const page = await browser.newPage();
 
-        await browser.close();
+        await login(page);
+
+        const currentDate = await getMainPageDetails(page);
+
+        const checkForScheduleDate = await checkForSchedules(page);
+
+        if (checkForScheduleDate) {
+            const earliestDate = findEarliestDate([currentDate, checkForScheduleDate]);
+
+            let earliestDateStr = format(earliestDate, 'yyyy-MM-dd');
+            let availableTimes = await checkForAvailableTimes(page, earliestDateStr);
+
+            logStep(`Earliest date found is ${earliestDateStr}, available times are ${availableTimes}`);
+
+            let diff = Math.round((earliestDate - now) / (1000 * 60 * 60 * 24))
+
+            const row = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString() + "," + earliestDateStr + "," + diff + "," + availableTimes + "\n"
+
+            fs.appendFile('./dates.csv', row, err => {
+                if (err) {
+                    console.error(err);
+                }
+            });
+
+            if (earliestDate && availableTimes && isBefore(earliestDate, parseISO(NOTIFY_ON_DATE_BEFORE))) {
+                await notifyMeViaTelegram(earliestDate, availableTimes);
+                await reschedule(page, earliestDate, availableTimes);
+                await notifyMe(earliestDate, availableTimes);
+            }
+        }
+    } catch (err) {
+        console.error(err);
+        await sendTelegramNotification(`Huston we have a problem: ${err}`);
     }
+
+    await browser.close();
 
     logStep(`Sleeping for ${NEXT_SCHEDULE_POLL_MIN} minutes`)
 
