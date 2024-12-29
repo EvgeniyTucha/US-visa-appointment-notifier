@@ -92,7 +92,10 @@ const reschedule = async (page, earliestDate, availableTimes) => {
         const nextButtonSelector = 'a.ui-datepicker-next[data-handler="next"]';
 
         let isDateVisible = false;
-        while (!isDateVisible) {
+        let attempts = 0;
+        const maxAttempts = 24; // Adjust based on reasonable maximum clicks needed
+
+        while (!isDateVisible && attempts < maxAttempts) {
             // Check if the <td> element is in the DOM
             isDateVisible = await page.evaluate((tdSelector) => {
                 return !!document.querySelector(tdSelector);
@@ -102,7 +105,11 @@ const reschedule = async (page, earliestDate, availableTimes) => {
             if (!isDateVisible) {
                 await page.click(nextButtonSelector);
                 await delayMs(1000);
+                attempts++;
             }
+        }
+        if (!isDateVisible) {
+            throw new Error(`Failed to find the desired date after ${maxAttempts} attempts.`);
         }
 
         // Click the link inside the <td> element once it is visible
