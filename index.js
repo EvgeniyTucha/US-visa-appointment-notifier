@@ -347,6 +347,7 @@ function getAvailableTimesUrl(availableDate) {
         await process();
     } catch (err) {
         console.error(err);
+        await sendTelegramNotification(`Huston we have a problem: ${err}. \n Script stopped`);
     }
 })();
 
