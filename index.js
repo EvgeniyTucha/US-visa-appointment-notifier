@@ -103,6 +103,13 @@ const reschedule = async (page, earliestDate, availableTimes) => {
 
             if (!isDateVisible) {
                 logStep('Date not visible, clicking next...');
+                const nextButtonVisible = await page.evaluate((selector) => {
+                    return !!document.querySelector(selector);
+                }, nextButtonSelector);
+
+                if (!nextButtonVisible) {
+                    throw new Error(`Next button not found on attempt ${attempts}.`);
+                }
                 await page.click(nextButtonSelector);
                 await delayMs(1000);
                 attempts++;
