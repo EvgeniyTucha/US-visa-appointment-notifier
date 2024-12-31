@@ -292,33 +292,35 @@ const process = async () => {
         const activeAppointmentDate = await getMainPageDetails(page);
 
         const earliestDateAvailable = await checkForSchedules(page);
-        if (!isBefore(earliestDateAvailable, activeAppointmentDate)) {
-            logStep(`Earliest date [${format(earliestDateAvailable, dateFormat)}] available to book is after already scheduled appointment on [${format(activeAppointmentDate, dateFormat)}]`)
-        } else {
-            let earliestDateStr = format(earliestDateAvailable, dateFormat);
-            let availableTimes = await checkForAvailableTimes(page, earliestDateStr);
+        if (earliestDateAvailable) {
+            if (!isBefore(earliestDateAvailable, activeAppointmentDate)) {
+                logStep(`Earliest date [${format(earliestDateAvailable, dateFormat)}] available to book is after already scheduled appointment on [${format(activeAppointmentDate, dateFormat)}]`)
+            } else {
+                let earliestDateStr = format(earliestDateAvailable, dateFormat);
+                let availableTimes = await checkForAvailableTimes(page, earliestDateStr);
 
-            if (earliestDateAvailable && availableTimes) {
-                logStep(`Earliest date found is ${earliestDateStr}, available times are ${availableTimes}`);
+                if (earliestDateAvailable && availableTimes) {
+                    logStep(`Earliest date found is ${earliestDateStr}, available times are ${availableTimes}`);
 
-                let shiftDate = addDays(now, EARLIEST_DATE_SHIFT);
-                if (isBefore(earliestDateAvailable, shiftDate)) {
-                    logStep(`Earliest date ${earliestDateStr} is before minimum allowed date ${shiftDate}`);
-                    throw new Error(`Earliest date ${earliestDateStr} is before minimum allowed date ${shiftDate}`);
-                }
-
-                let diff = Math.round((earliestDateAvailable - now) / (1000 * 60 * 60 * 24))
-
-                const row = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString() + "," + earliestDateStr + "," + diff + "," + availableTimes + "\n"
-
-                fs.appendFile('./dates.csv', row, err => {
-                    if (err) {
-                        console.error(err);
+                    let shiftDate = addDays(now, EARLIEST_DATE_SHIFT);
+                    if (isBefore(earliestDateAvailable, shiftDate)) {
+                        logStep(`Earliest date ${earliestDateStr} is before minimum allowed date ${shiftDate}`);
+                        throw new Error(`Earliest date ${earliestDateStr} is before minimum allowed date ${shiftDate}`);
                     }
-                });
-                if (isBefore(earliestDateAvailable, parseISO(NOTIFY_ON_DATE_BEFORE))) {
-                    await notifyMeViaTelegram(earliestDateAvailable, availableTimes);
-                    await reschedule(page, earliestDateAvailable, availableTimes);
+
+                    let diff = Math.round((earliestDateAvailable - now) / (1000 * 60 * 60 * 24))
+
+                    const row = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString() + "," + earliestDateStr + "," + diff + "," + availableTimes + "\n"
+
+                    fs.appendFile('./dates.csv', row, err => {
+                        if (err) {
+                            console.error(err);
+                        }
+                    });
+                    if (isBefore(earliestDateAvailable, parseISO(NOTIFY_ON_DATE_BEFORE))) {
+                        await notifyMeViaTelegram(earliestDateAvailable, availableTimes);
+                        await reschedule(page, earliestDateAvailable, availableTimes);
+                    }
                 }
             }
         }
