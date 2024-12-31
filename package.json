@@ -25,6 +25,7 @@
   "homepage": "https://github.com/theoomoregbee/US-visa-appointment-notifier#readme",
   "dependencies": {
     "cheerio": "^1.0.0",
+    "concurrently": "^9.1.2",
     "date-fns": "^2.29.2",
     "dotenv": "^16.0.1",
     "mailgun.js": "^8.0.0",

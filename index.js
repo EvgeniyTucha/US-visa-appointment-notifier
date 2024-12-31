@@ -54,7 +54,7 @@ const login = async (page) => {
     return true;
 }
 
-const notifyMe = async (earliestDate, availableTimes) => {
+const notifyMeViaEmail = async (earliestDate, availableTimes) => {
     const formattedDate = format(earliestDate, dateFormat);
     logStep(`sending an email to schedule for ${formattedDate}. Available times are: ${availableTimes}`);
     await sendEmail({
@@ -74,12 +74,14 @@ const reschedule = async (page, earliestDate, availableTimes) => {
 
         logStep('Rescheduling step #1 facility selected');
 
-        const date = await page.waitForSelector("input#appointments_consulate_appointment_date");
+        const date = await page.waitForSelector("input#appointments_consulate_appointment_date", {
+            visible: true,
+            timeout: 5000
+        });
 
         logStep('Rescheduling step #2 date selector');
 
-        await date.evaluate((el) => el.click()); // Ensure interactive click
-        await delayMs(1000);
+        await date.evaluate((el) => el.click());
 
         logStep('Rescheduling step #2.1 date selector clicked');
 
@@ -111,7 +113,7 @@ const reschedule = async (page, earliestDate, availableTimes) => {
                     throw new Error(`Next button not found on attempt ${attempts}.`);
                 }
                 await page.click(nextButtonSelector);
-                await delayMs(1000);
+                await delayMs(500);
                 attempts++;
             }
         }
@@ -172,7 +174,7 @@ const sendTelegramNotification = async (message) => {
 
 const sendTelegramScreenshot = async (page, fileName) => {
     const logName = `${fileName}.png`;
-    await page.screenshot({ path:  logName});
+    await page.screenshot({path: logName});
 
     bot.sendPhoto(chatId, logName)
         .then(() => console.log('Screenshot sent!'))
@@ -287,26 +289,25 @@ const process = async () => {
 
         await login(page);
 
-        const currentDate = await getMainPageDetails(page);
+        const activeAppointmentDate = await getMainPageDetails(page);
 
-        const checkForScheduleDate = await checkForSchedules(page);
-
-        if (checkForScheduleDate) {
-            const earliestDate = findEarliestDate([currentDate, checkForScheduleDate]);
-
-            let earliestDateStr = format(earliestDate, dateFormat);
+        const earliestDateAvailable = await checkForSchedules(page);
+        if (!isBefore(earliestDateAvailable, activeAppointmentDate)) {
+            logStep(`Earliest date [${format(earliestDateAvailable, dateFormat)}] available to book is after already scheduled appointment on [${format(activeAppointmentDate, dateFormat)}]`)
+        } else {
+            let earliestDateStr = format(earliestDateAvailable, dateFormat);
             let availableTimes = await checkForAvailableTimes(page, earliestDateStr);
 
-            if (earliestDate && availableTimes) {
+            if (earliestDateAvailable && availableTimes) {
                 logStep(`Earliest date found is ${earliestDateStr}, available times are ${availableTimes}`);
 
                 let shiftDate = addDays(now, EARLIEST_DATE_SHIFT);
-                if (isBefore(earliestDate, shiftDate)) {
+                if (isBefore(earliestDateAvailable, shiftDate)) {
                     logStep(`Earliest date ${earliestDateStr} is before minimum allowed date ${shiftDate}`);
                     throw new Error(`Earliest date ${earliestDateStr} is before minimum allowed date ${shiftDate}`);
                 }
 
-                let diff = Math.round((earliestDate - now) / (1000 * 60 * 60 * 24))
+                let diff = Math.round((earliestDateAvailable - now) / (1000 * 60 * 60 * 24))
 
                 const row = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString() + "," + earliestDateStr + "," + diff + "," + availableTimes + "\n"
 
@@ -315,9 +316,9 @@ const process = async () => {
                         console.error(err);
                     }
                 });
-                if (isBefore(earliestDate, parseISO(NOTIFY_ON_DATE_BEFORE))) {
-                    await notifyMeViaTelegram(earliestDate, availableTimes);
-                    await reschedule(page, earliestDate, availableTimes);
+                if (isBefore(earliestDateAvailable, parseISO(NOTIFY_ON_DATE_BEFORE))) {
+                    await notifyMeViaTelegram(earliestDateAvailable, availableTimes);
+                    await reschedule(page, earliestDateAvailable, availableTimes);
                 }
             }
         }
