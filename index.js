@@ -172,6 +172,9 @@ const reschedule = async (page, earliestDate, availableTimes) => {
         const formattedDate = format(now, dateFormat);
         await sendTelegramScreenshot(page, `error_reschedule_on_date_${formattedDate}`);
 
+        // trying alternative rescheduling
+        await rescheduleAlt(page, format(earliestDate, dateFormat), availableTimes[0], siteInfo.FACILITY_ID);
+
         // try to reschedule one more time if date is still available
         const earliestDateAvailable = await checkForSchedules(page);
         if (earliestDateAvailable && isEqual(earliestDateAvailable, earliestDate)) {
@@ -179,6 +182,65 @@ const reschedule = async (page, earliestDate, availableTimes) => {
         }
     }
 }
+
+async function rescheduleAlt(page, date, appointment_time, facility_id) {
+    let success = false;
+    logStep(`Starting Alt Reschedule (${date})`);
+    const now = new Date();
+    try {
+        await page.goto(siteInfo.APPOINTMENTS_URL);
+
+        const formData = {
+            "utf8": "✓",
+            "authenticity_token": await page.$eval('input[name="authenticity_token"]', el => el.value),
+            "confirmed_limit_message": await page.$eval('input[name="confirmed_limit_message"]', el => el.value),
+            "use_consulate_appointment_capacity": await page.$eval('input[name="use_consulate_appointment_capacity"]', el => el.value),
+            "appointments[consulate_appointment][facility_id]": facility_id,
+            "appointments[consulate_appointment][date]": date,
+            "appointments[consulate_appointment][time]": appointment_time,
+        };
+
+        const response = await page.evaluate(async (formData) => {
+            const form = document.createElement('form');
+            form.method = 'POST';
+
+            for (const key in formData) {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = key;
+                input.value = formData[key];
+                form.appendChild(input);
+            }
+
+            document.body.appendChild(form);
+            return fetch(form.action, {
+                method: 'POST',
+                body: new FormData(form),
+            });
+        }, formData);
+        console.log(response);
+        const text = await response.text();
+        if (text.includes('Successfully Scheduled')) {
+            const msg = `Rescheduled Successfully! ${date} ${appointment_time}`;
+            await sendTelegramNotification(msg);
+            console.log(msg);
+            success = true;
+        } else {
+            const msg = `Reschedule Failed. ${date} ${appointment_time}`;
+            await sendTelegramNotification(msg);
+            console.log(msg);
+        }
+    } catch (error) {
+        console.error('Error during reschedule:', error);
+        await sendTelegramNotification(`Huston we have a problem during ALT rescheduling: ${err}`);
+        const formattedDate = format(now, dateFormat);
+        await sendTelegramScreenshot(page, `error_alt_reschedule_on_date_${formattedDate}`);
+    } finally {
+        return success;
+    }
+}
+
+
 
 const sendTelegramNotification = async (message) => {
     bot.sendMessage(chatId, message)
