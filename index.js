@@ -1,5 +1,5 @@
 const puppeteer = require('puppeteer-extra');
-const {parseISO, compareAsc, isBefore, format} = require('date-fns')
+const {parseISO, compareAsc, isBefore, format, isEqual} = require('date-fns')
 require('dotenv').config();
 const fs = require('fs');
 const TelegramBot = require('node-telegram-bot-api');
@@ -15,7 +15,7 @@ const {
     NOTIFY_ON_DATE_BEFORE,
     EARLIEST_DATE_SHIFT
 } = require('./config');
-const {th} = require("date-fns/locale");
+const {th, ca} = require("date-fns/locale");
 const config = require("./config");
 
 let maxTries = MAX_NUMBER_OF_POLL
@@ -64,105 +64,119 @@ const notifyMeViaEmail = async (earliestDate, availableTimes) => {
 }
 
 const reschedule = async (page, earliestDate, availableTimes) => {
-    const formattedDate = format(earliestDate, dateFormat);
-    if (availableTimes[0] != null) {
-        logStep(`Rescheduling for ${formattedDate} at ${availableTimes[0]}`);
+    const now = new Date();
+    try {
+        const formattedDate = format(earliestDate, dateFormat);
+        if (availableTimes[0] != null) {
+            logStep(`Rescheduling for ${formattedDate} at ${availableTimes[0]}`);
 
-        await page.goto(siteInfo.APPOINTMENTS_URL);
+            await page.goto(siteInfo.APPOINTMENTS_URL);
 
-        await page.select('select#appointments_consulate_appointment_facility_id', siteInfo.FACILITY_ID);
+            await page.select('select#appointments_consulate_appointment_facility_id', siteInfo.FACILITY_ID);
 
-        logStep('Rescheduling step #1 facility selected');
+            logStep('Rescheduling step #1 facility selected');
 
-        const date = await page.waitForSelector("input#appointments_consulate_appointment_date", {
-            visible: true,
-            timeout: 5000
-        });
+            const date = await page.waitForSelector("input#appointments_consulate_appointment_date", {
+                visible: true,
+                timeout: 5000
+            });
 
-        logStep('Rescheduling step #2 date selector');
+            logStep('Rescheduling step #2 date selector');
 
-        await date.evaluate((el) => el.click());
+            await date.evaluate((el) => el.click());
 
-        logStep('Rescheduling step #2.1 date selector clicked');
+            logStep('Rescheduling step #2.1 date selector clicked');
 
-        const [year, month, day] = formattedDate.split('-');
+            const [year, month, day] = formattedDate.split('-');
 
-        const zeroBasedMonth = parseInt(month, 10) - 1;
+            const zeroBasedMonth = parseInt(month, 10) - 1;
 
-        const tdSelector = `td.undefined[data-handler="selectDay"][data-event="click"][data-month="${zeroBasedMonth}"][data-year="${year}"]`;
-        const linkSelector = 'a.ui-state-default';
-        const nextButtonSelector = 'a.ui-datepicker-next[data-handler="next"]';
+            const tdSelector = `td.undefined[data-handler="selectDay"][data-event="click"][data-month="${zeroBasedMonth}"][data-year="${year}"]`;
+            const linkSelector = 'a.ui-state-default';
+            const nextButtonSelector = 'a.ui-datepicker-next[data-handler="next"]';
 
-        let isDateVisible = false;
-        let attempts = 0;
-        const maxAttempts = 24; // Adjust based on reasonable maximum clicks needed
+            let isDateVisible = false;
+            let attempts = 0;
+            const maxAttempts = 24; // Adjust based on reasonable maximum clicks needed
 
-        while (!isDateVisible && attempts < maxAttempts) {
-            logStep(`Attempt ${attempts}: Checking for date visibility...`);
-            isDateVisible = await page.evaluate((tdSelector) => {
-                return !!document.querySelector(tdSelector);
-            }, tdSelector);
+            while (!isDateVisible && attempts < maxAttempts) {
+                logStep(`Attempt ${attempts}: Checking for date visibility...`);
+                isDateVisible = await page.evaluate((tdSelector) => {
+                    return !!document.querySelector(tdSelector);
+                }, tdSelector);
 
+                if (!isDateVisible) {
+                    logStep('Date not visible, clicking next...');
+                    const nextButtonVisible = await page.evaluate((selector) => {
+                        return !!document.querySelector(selector);
+                    }, nextButtonSelector);
+
+                    if (!nextButtonVisible) {
+                        throw new Error(`Next button not found on attempt ${attempts}.`);
+                    }
+                    await page.click(nextButtonSelector);
+                    await delayMs(500);
+                    attempts++;
+                }
+            }
             if (!isDateVisible) {
-                logStep('Date not visible, clicking next...');
-                const nextButtonVisible = await page.evaluate((selector) => {
-                    return !!document.querySelector(selector);
-                }, nextButtonSelector);
-
-                if (!nextButtonVisible) {
-                    throw new Error(`Next button not found on attempt ${attempts}.`);
-                }
-                await page.click(nextButtonSelector);
-                await delayMs(500);
-                attempts++;
+                throw new Error(`Failed to find the desired date (${formattedDate}) after ${maxAttempts} attempts. Possible DOM structure issue.`);
             }
-        }
-        if (!isDateVisible) {
-            throw new Error(`Failed to find the desired date (${formattedDate}) after ${maxAttempts} attempts. Possible DOM structure issue.`);
-        }
 
-        // Click the link inside the <td> element once it is visible
-        await page.evaluate((tdSelector, linkSelector) => {
-            const tdElement = document.querySelector(tdSelector);
-            if (tdElement) {
-                const linkElement = tdElement.querySelector(linkSelector);
-                if (linkElement) {
-                    linkElement.click();
+            // Click the link inside the <td> element once it is visible
+            await page.evaluate((tdSelector, linkSelector) => {
+                const tdElement = document.querySelector(tdSelector);
+                if (tdElement) {
+                    const linkElement = tdElement.querySelector(linkSelector);
+                    if (linkElement) {
+                        linkElement.click();
+                    } else {
+                        throw new Error('Link element not found inside the specified <td>.');
+                    }
                 } else {
-                    throw new Error('Link element not found inside the specified <td>.');
+                    throw new Error('Specified <td> element not found.');
                 }
-            } else {
-                throw new Error('Specified <td> element not found.');
-            }
-        }, tdSelector, linkSelector);
+            }, tdSelector, linkSelector);
 
-        logStep('Rescheduling step #2.2 date selector clicked');
+            logStep('Rescheduling step #2.2 date selector clicked');
 
-        await delayMs(500);
+            await delayMs(500);
 
-        const timeSelector = 'select#appointments_consulate_appointment_time';
-        await page.waitForSelector(timeSelector);
-        await page.select(timeSelector, availableTimes[0]);
+            const timeSelector = 'select#appointments_consulate_appointment_time';
+            await page.waitForSelector(timeSelector);
+            await page.select(timeSelector, availableTimes[0]);
 
-        await delayMs(500);
-        logStep('Rescheduling step #3 time clicked');
+            await delayMs(500);
+            logStep('Rescheduling step #3 time clicked');
 
-        const submitButtonSelector = 'input#appointments_submit';
-        await page.waitForSelector(submitButtonSelector);
-        await page.click(submitButtonSelector);
+            const submitButtonSelector = 'input#appointments_submit';
+            await page.waitForSelector(submitButtonSelector);
+            await page.click(submitButtonSelector);
 
-        await delayMs(500);
+            await delayMs(500);
 
-        logStep('Rescheduling step #4 submit button clicked');
+            logStep('Rescheduling step #4 submit button clicked');
 
-        const confirmButtonSelector = 'div[data-confirm-footer] a.button.alert';
+            const confirmButtonSelector = 'div[data-confirm-footer] a.button.alert';
 
-        // Wait for the Confirm button to be visible on the page
-        await page.waitForSelector(confirmButtonSelector, {visible: true});
-        await page.click(confirmButtonSelector);
+            // Wait for the Confirm button to be visible on the page
+            await page.waitForSelector(confirmButtonSelector, {visible: true});
+            await page.click(confirmButtonSelector);
 
-        await sendTelegramNotification(`Booking for ${formattedDate} at ${availableTimes[0]} completed`);
-        await sendTelegramScreenshot(page, `reschedule_finished_${formattedDate}`);
+            await sendTelegramNotification(`Booking for ${formattedDate} at ${availableTimes[0]} completed`);
+            await sendTelegramScreenshot(page, `reschedule_finished_${formattedDate}`);
+        }
+    } catch (err) {
+        console.error(err);
+        await sendTelegramNotification(`Huston we have a problem during rescheduling: ${err}`);
+        const formattedDate = format(now, dateFormat);
+        await sendTelegramScreenshot(page, `error_reschedule_on_date_${formattedDate}`);
+
+        // try to reschedule one more time if date is still available
+        const earliestDateAvailable = await checkForSchedules(page);
+        if (earliestDateAvailable && isEqual(earliestDateAvailable, earliestDate)) {
+            await reschedule(page, earliestDate, availableTimes);
+        }
     }
 }
 
