@@ -5,7 +5,7 @@ const fs = require('fs');
 const TelegramBot = require('node-telegram-bot-api');
 const dateFormat = 'yyyy-MM-dd';
 
-const {delay, sendEmail, logStep, debug} = require('./utils');
+const {delay, logStep, debug} = require('./utils');
 const {
     siteInfo,
     loginCred,
@@ -15,7 +15,6 @@ const {
     NOTIFY_ON_DATE_BEFORE,
     EARLIEST_DATE_SHIFT
 } = require('./config');
-const {th, ca} = require("date-fns/locale");
 const config = require("./config");
 
 let maxTries = MAX_NUMBER_OF_POLL
@@ -23,7 +22,7 @@ const botToken = config.telegram.NOTIFY_TG_TOKEN;
 const chatId = config.telegram.NOTIFY_TG_CHAT_ID;
 const bot = new TelegramBot(botToken, {polling: true});
 
-const login = async (page) => {
+const loginAndFetchActiveBookingDate = async (page) => {
     logStep('logging in');
 
     await page.goto(siteInfo.LOGIN_URL);
@@ -51,16 +50,21 @@ const login = async (page) => {
 
     await page.waitForNavigation();
 
-    return true;
-}
+    const bodyText = await page.evaluate(() => {
+        return document.querySelector('.consular-appt').innerText
+    });
 
-const notifyMeViaEmail = async (earliestDate, availableTimes) => {
-    const formattedDate = format(earliestDate, dateFormat);
-    logStep(`sending an email to schedule for ${formattedDate}. Available times are: ${availableTimes}`);
-    await sendEmail({
-        subject: `We found an earlier date ${formattedDate}`,
-        text: `Hurry and schedule for ${formattedDate} before it is taken. Available times are: ${availableTimes}`
-    })
+    const match = bodyText.match(/(\d{1,2} \w+, \d{4}, \d{2}:\d{2})/);
+
+    // Vancouver is in GMT-7 for local time
+    const parsedDate = new Date(match[1] + " GMT-7");
+    logStep(`Parsed booked date: ${parsedDate} from profile`);
+
+    // Subtract 2 days
+    const twoDaysInMilliseconds = 2 * 24 * 60 * 60 * 1000; // 2 days in milliseconds
+    const newDate = new Date(parsedDate.getTime() - twoDaysInMilliseconds);
+    logStep(`Booked date -2 days to compare: ${newDate}`);
+    return newDate;
 }
 
 const reschedule = async (page, earliestDate, availableTimes) => {
@@ -240,8 +244,6 @@ async function rescheduleAlt(page, date, appointment_time, facility_id) {
     }
 }
 
-
-
 const sendTelegramNotification = async (message) => {
     bot.sendMessage(chatId, message)
         .then(() => console.log('Notification sent!'))
@@ -266,35 +268,6 @@ const notifyMeViaTelegram = async (earliestDate, availableTimes) => {
     logStep(`sending an TG notification to schedule for ${formattedDate}. Available times are: ${availableTimes}`);
 
     await sendTelegramNotification(`Hurry and schedule for ${formattedDate} before it is taken. Available times are: ${availableTimes}`);
-}
-
-
-const getMainPageDetails = async (page) => {
-    logStep('checking main page details for current booking date');
-    await page.setExtraHTTPHeaders({
-        'Accept': 'application/json, text/javascript, */*; q=0.01',
-        'X-Requested-With': 'XMLHttpRequest'
-    });
-
-    await page.goto(siteInfo.BASE_DATA_URL);
-
-    const bodyText = await page.evaluate(() => {
-        return document.querySelector('.consular-appt').innerText
-    });
-
-    const match = bodyText.match(/(\d{1,2} \w+, \d{4}, \d{2}:\d{2})/);
-
-    // Vancouver is in GMT-7 for local time
-    const parsedDate = new Date(match[1] + " GMT-7");
-    logStep(`Parsed booked date: ${parsedDate} from profile`);
-
-    // console.log("Parsed Date:", parsedDate.toISOString()); // Outputs date in ISO 8601 format
-
-    // Subtract 2 days
-    const twoDaysInMilliseconds = 2 * 24 * 60 * 60 * 1000; // 2 days in milliseconds
-    const newDate = new Date(parsedDate.getTime() - twoDaysInMilliseconds);
-    logStep(`Booked date -2 days to compare: ${newDate}`);
-    return newDate;
 }
 
 const checkForSchedules = async (page) => {
@@ -363,9 +336,7 @@ const process = async () => {
             return
         }
 
-        await login(page);
-
-        const activeAppointmentDate = await getMainPageDetails(page);
+        const activeAppointmentDate = await loginAndFetchActiveBookingDate(page);
 
         const earliestDateAvailable = await checkForSchedules(page);
         if (earliestDateAvailable) {
@@ -429,12 +400,6 @@ function getAvailableTimesUrl(availableDate) {
         await sendTelegramNotification(`Huston we have a problem: ${err}. \n Script stopped`);
     }
 })();
-
-function findEarliestDate(dates) {
-    return dates.reduce((earliest, current) =>
-        current.getTime() < earliest.getTime() ? current : earliest
-    );
-}
 
 function addDays(date, days) {
     const result = new Date(date);
