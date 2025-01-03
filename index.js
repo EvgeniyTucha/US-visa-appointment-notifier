@@ -147,8 +147,15 @@ const reschedule = async (page, earliestDate, availableTimes) => {
             await delayMs(500);
 
             const timeSelector = 'select#appointments_consulate_appointment_time';
+            await page.$eval(timeSelector, element => element.scrollIntoView());
             await page.waitForSelector(timeSelector, {visible: true, timeout: 5000});
             await page.select(timeSelector, availableTimes[0]);
+
+            // Get all available values from the <select> element
+            const options = await page.$$eval(`${timeSelector} option`, (options) =>
+                options.map(option => option.value).filter(value => value !== '') // Exclude empty values
+            );
+            logStep(`Available options: ${options}`);
 
             await delayMs(500);
             logStep('Rescheduling step #3 time clicked');
