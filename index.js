@@ -101,8 +101,8 @@ const reschedule = async (page, earliestDate, availableTimes) => {
 
             let isDateVisible = false;
             let attempts = 0;
-            const maxAttempts = 24; // Adjust based on reasonable maximum clicks needed
-
+            const maxAttempts = getMonthsDifference(now, earliestDate); // calculate amount of clicks needed to see the available date
+            logStep(`Month Difference is ${maxAttempts}`)
             while (!isDateVisible && attempts < maxAttempts) {
                 logStep(`Attempt ${attempts}: Checking for date visibility...`);
                 isDateVisible = await page.evaluate((tdSelector) => {
@@ -119,7 +119,7 @@ const reschedule = async (page, earliestDate, availableTimes) => {
                         throw new Error(`Next button not found on attempt ${attempts}.`);
                     }
                     await page.click(nextButtonSelector);
-                    await delayMs(500);
+                    // await delayMs(500);
                     attempts++;
                 }
             }
@@ -144,7 +144,7 @@ const reschedule = async (page, earliestDate, availableTimes) => {
 
             logStep('Rescheduling step #2.2 date selector clicked');
 
-            await delayMs(500);
+            // await delayMs(500);
 
             const timeSelector = 'select#appointments_consulate_appointment_time';
             await page.$eval(timeSelector, element => element.scrollIntoView());
@@ -157,7 +157,7 @@ const reschedule = async (page, earliestDate, availableTimes) => {
             );
             logStep(`Available options: ${options}`);
 
-            await delayMs(500);
+            // await delayMs(500);
             logStep('Rescheduling step #3 time clicked');
 
             const submitButtonSelector = 'input#appointments_submit';
@@ -173,7 +173,7 @@ const reschedule = async (page, earliestDate, availableTimes) => {
                 console.log('Input button is disabled.');
             }
 
-            await delayMs(500);
+            // await delayMs(500);
 
             logStep('Rescheduling step #4 submit button clicked');
 
@@ -244,20 +244,25 @@ async function rescheduleAlt(page, date, appointment_time, facility_id) {
             }
 
             document.body.appendChild(form);
-            return fetch(form.action, {
+            const resp = await fetch(form.action, {
                 method: 'POST',
                 body: new FormData(form),
             });
+            console.log(resp);
+            return {
+                ok: resp.ok,
+                status: resp.status,
+                text: await resp.text(),
+            };
         }, formData);
         console.log(response);
-        const text = await response.text();
-        if (text.includes('Successfully Scheduled')) {
+        if (response.ok && response.text.includes('Successfully Scheduled')) {
             const msg = `Rescheduled Successfully! ${date} ${appointment_time}`;
             await sendTelegramNotification(msg);
             console.log(msg);
             success = true;
         } else {
-            const msg = `Reschedule Failed. ${date} ${appointment_time}`;
+            const msg = `Reschedule Failed. ${date} ${appointment_time}. Status: ${response.status}`;
             await sendTelegramNotification(msg);
             console.log(msg);
         }
@@ -392,13 +397,16 @@ const process = async () => {
                         }
                     });
                     if (isBefore(earliestDateAvailable, parseISO(NOTIFY_ON_DATE_BEFORE))) {
+                        let scheduled = false;
                         try {
-                            await rescheduleAlt(page, format(earliestDateAvailable, dateFormat), availableTimes[0], siteInfo.FACILITY_ID);
+                            scheduled = await rescheduleAlt(page, format(earliestDateAvailable, dateFormat), availableTimes[0], siteInfo.FACILITY_ID);
                         } catch (err) {
                             logStep("Failed to reschedule using ALT method #1");
                         }
-                        await notifyMeViaTelegram(earliestDateAvailable, availableTimes);
-                        await reschedule(page, earliestDateAvailable, availableTimes);
+                        if (!scheduled) {
+                            await reschedule(page, earliestDateAvailable, availableTimes);
+                            await notifyMeViaTelegram(earliestDateAvailable, availableTimes);
+                        }
                     }
                 }
             }
@@ -423,6 +431,17 @@ function getAvailableTimesUrl(availableDate) {
     return siteInfo.AVAILABLE_TIMES_URL + `?date=${availableDate}&appointments[expedite]=false`
 }
 
+function getMonthsDifference(start, endDate) {
+    // Parse the dates if they are not Date objects
+    const end = new Date(endDate);
+
+    // Calculate the year and month difference
+    const yearsDiff = end.getFullYear() - start.getFullYear();
+    const monthsDiff = end.getMonth() - start.getMonth();
+
+    // Combine year and month difference into total months
+    return yearsDiff * 12 + monthsDiff - 1;
+}
 
 (async () => {
     try {
