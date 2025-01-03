@@ -208,11 +208,6 @@ const reschedule = async (page, earliestDate, availableTimes) => {
             // try to reschedule one more time if date is still available
             const earliestDateAvailable = await checkForSchedules(page);
             if (earliestDateAvailable && isEqual(earliestDateAvailable, earliestDate)) {
-                try {
-                    await rescheduleAlt(page, format(earliestDate, dateFormat), availableTimes[0], siteInfo.FACILITY_ID);
-                } catch (err) {
-                    logStep("Failed to reschedule");
-                }
                 await reschedule(page, earliestDate, availableTimes);
             }
         }
@@ -397,6 +392,11 @@ const process = async () => {
                         }
                     });
                     if (isBefore(earliestDateAvailable, parseISO(NOTIFY_ON_DATE_BEFORE))) {
+                        try {
+                            await rescheduleAlt(page, format(earliestDateAvailable, dateFormat), availableTimes[0], siteInfo.FACILITY_ID);
+                        } catch (err) {
+                            logStep("Failed to reschedule using ALT method #1");
+                        }
                         await notifyMeViaTelegram(earliestDateAvailable, availableTimes);
                         await reschedule(page, earliestDateAvailable, availableTimes);
                     }
