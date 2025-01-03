@@ -218,6 +218,7 @@ async function rescheduleAlt(page, date, appointment_time, facility_id) {
     let success = false;
     logStep(`Starting Alt Reschedule (${date})`);
     const now = new Date();
+    const formattedDate = format(now, dateFormat);
     try {
         await page.goto(siteInfo.APPOINTMENTS_URL);
 
@@ -244,32 +245,27 @@ async function rescheduleAlt(page, date, appointment_time, facility_id) {
             }
 
             document.body.appendChild(form);
-            const resp = await fetch(form.action, {
+            return fetch(form.action, {
                 method: 'POST',
                 body: new FormData(form),
             });
-            console.log(resp);
-            return {
-                ok: resp.ok,
-                status: resp.status,
-                text: await resp.text(),
-            };
         }, formData);
-        console.log(response);
-        if (response.ok && response.text.includes('Successfully Scheduled')) {
+        console.log(`response.ok: ${response.ok}, response.status: ${response.status}`);
+        const text = await response.text();
+        console.log(`response.text: ${text}`);
+        if (response.ok && text.includes('Successfully Scheduled')) {
             const msg = `Rescheduled Successfully! ${date} ${appointment_time}`;
             await sendTelegramNotification(msg);
-            console.log(msg);
+            await sendTelegramScreenshot(page, `reschedule_successful_${formattedDate}`);
             success = true;
         } else {
             const msg = `Reschedule Failed. ${date} ${appointment_time}. Status: ${response.status}`;
             await sendTelegramNotification(msg);
-            console.log(msg);
+            await sendTelegramScreenshot(page, `reschedule_failed_${formattedDate}`);
         }
     } catch (error) {
         console.error('Error during reschedule:', error);
         await sendTelegramNotification(`Huston we have a problem during ALT rescheduling: ${err}`);
-        const formattedDate = format(now, dateFormat);
         await sendTelegramScreenshot(page, `error_alt_reschedule_on_date_${formattedDate}`);
     } finally {
         return success;
