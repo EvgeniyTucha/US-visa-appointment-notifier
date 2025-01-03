@@ -147,7 +147,7 @@ const reschedule = async (page, earliestDate, availableTimes) => {
             await delayMs(500);
 
             const timeSelector = 'select#appointments_consulate_appointment_time';
-            await page.waitForSelector(timeSelector);
+            await page.waitForSelector(timeSelector, {visible: true, timeout: 5000});
             await page.select(timeSelector, availableTimes[0]);
 
             await delayMs(500);
@@ -155,7 +155,16 @@ const reschedule = async (page, earliestDate, availableTimes) => {
 
             const submitButtonSelector = 'input#appointments_submit';
             await page.waitForSelector(submitButtonSelector);
-            await page.click(submitButtonSelector);
+            const isEnabledSubmitButton = await page.$eval(submitButtonSelector, (input) => {
+                return !input.disabled;
+            });
+
+            if (isEnabledSubmitButton) {
+                console.log('Input button is enabled. Clicking...');
+                await page.click(submitButtonSelector);
+            } else {
+                console.log('Input button is disabled.');
+            }
 
             await delayMs(500);
 
@@ -165,7 +174,16 @@ const reschedule = async (page, earliestDate, availableTimes) => {
 
             // Wait for the Confirm button to be visible on the page
             await page.waitForSelector(confirmButtonSelector, {visible: true});
-            await page.click(confirmButtonSelector);
+            const isEnabledConfirmButton = await page.$eval(confirmButtonSelector, (button) => {
+                return !button.disabled;
+            });
+
+            if (isEnabledConfirmButton) {
+                console.log('Confirm button is enabled. Clicking...');
+                await page.click(confirmButtonSelector);
+            } else {
+                console.log('Confirm button is disabled.');
+            }
 
             await sendTelegramNotification(`Booking for ${formattedDate} at ${availableTimes[0]} completed`);
             await sendTelegramScreenshot(page, `reschedule_finished_${formattedDate}`);
@@ -177,12 +195,19 @@ const reschedule = async (page, earliestDate, availableTimes) => {
         await sendTelegramScreenshot(page, `error_reschedule_on_date_${formattedDate}`);
 
         // trying alternative rescheduling
-        await rescheduleAlt(page, format(earliestDate, dateFormat), availableTimes[0], siteInfo.FACILITY_ID);
+        const rescheduleSuccessful = await rescheduleAlt(page, format(earliestDate, dateFormat), availableTimes[0], siteInfo.FACILITY_ID);
 
-        // try to reschedule one more time if date is still available
-        const earliestDateAvailable = await checkForSchedules(page);
-        if (earliestDateAvailable && isEqual(earliestDateAvailable, earliestDate)) {
-            await reschedule(page, earliestDate, availableTimes);
+        if (!rescheduleSuccessful) {
+            // try to reschedule one more time if date is still available
+            const earliestDateAvailable = await checkForSchedules(page);
+            if (earliestDateAvailable && isEqual(earliestDateAvailable, earliestDate)) {
+                try {
+                    await rescheduleAlt(page, format(earliestDate, dateFormat), availableTimes[0], siteInfo.FACILITY_ID);
+                } catch (err) {
+                    logStep("Failed to reschedule");
+                }
+                await reschedule(page, earliestDate, availableTimes);
+            }
         }
     }
 }
