@@ -252,7 +252,7 @@ const sendTelegramNotification = async (message) => {
 
 const sendTelegramScreenshot = async (page, fileName) => {
     const logName = `${fileName}.png`;
-    await page.screenshot({path: logName});
+    await page.screenshot({path: logName, fullPage: true});
 
     bot.sendPhoto(chatId, logName)
         .then(() => console.log('Screenshot sent!'))
@@ -290,7 +290,7 @@ const checkForSchedules = async (page) => {
 
     const dates = parsedBody.map(item => parseISO(item.date));
     const [earliest] = dates.sort(compareAsc)
-
+    logStep(`earliest available date found: ${earliest}`);
     return earliest;
 }
 
@@ -346,7 +346,7 @@ const process = async () => {
                 let earliestDateStr = format(earliestDateAvailable, dateFormat);
                 let availableTimes = await checkForAvailableTimes(page, earliestDateStr);
 
-                if (earliestDateAvailable && availableTimes) {
+                if (availableTimes) {
                     logStep(`Earliest date found is ${earliestDateStr}, available times are ${availableTimes}`);
 
                     let shiftDate = addDays(now, EARLIEST_DATE_SHIFT);
