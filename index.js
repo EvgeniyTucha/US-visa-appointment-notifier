@@ -1,7 +1,6 @@
 const puppeteer = require('puppeteer-extra');
 const {parseISO, compareAsc, isBefore, format, isEqual} = require('date-fns')
 require('dotenv').config();
-const fs = require('fs');
 const TelegramBot = require('node-telegram-bot-api');
 const dateFormat = 'yyyy-MM-dd';
 
@@ -16,6 +15,7 @@ const {
     EARLIEST_DATE_SHIFT
 } = require('./config');
 const config = require("./config");
+const {da} = require("date-fns/locale");
 
 let maxTries = MAX_NUMBER_OF_POLL
 const botToken = config.telegram.NOTIFY_TG_TOKEN;
@@ -67,158 +67,34 @@ const loginAndFetchActiveBookingDate = async (page) => {
     return newDate;
 }
 
-const reschedule = async (page, earliestDate, availableTimes) => {
-    const now = new Date();
-    try {
-        const formattedDate = format(earliestDate, dateFormat);
-        if (availableTimes[0] != null) {
-            logStep(`Rescheduling for ${formattedDate} at ${availableTimes[0]}`);
 
-            await page.goto(siteInfo.APPOINTMENTS_URL);
+const getMainPageDetails = async (page) => {
+    logStep('checking main page details for current booking date');
+    await page.setExtraHTTPHeaders({
+        'Accept': 'application/json, text/javascript, */*; q=0.01',
+        'X-Requested-With': 'XMLHttpRequest'
+    });
 
-            await page.select('select#appointments_consulate_appointment_facility_id', siteInfo.FACILITY_ID);
+    await page.goto(siteInfo.BASE_DATA_URL);
 
-            logStep('Rescheduling step #1 facility selected');
+    const bodyText = await page.evaluate(() => {
+        return document.querySelector('.consular-appt').innerText
+    });
 
-            const date = await page.waitForSelector("input#appointments_consulate_appointment_date", {
-                visible: true,
-                timeout: 5000
-            });
+    const match = bodyText.match(/(\d{1,2} \w+, \d{4}, \d{2}:\d{2})/);
 
-            logStep('Rescheduling step #2 date selector');
+    // Vancouver is in GMT-7 for local time
+    const parsedDate = new Date(match[1] + " GMT-7");
+    logStep(`Parsed booked date: ${parsedDate} from profile`);
 
-            await date.evaluate((el) => el.click());
-
-            logStep('Rescheduling step #2.1 date selector clicked');
-
-            const [year, month, day] = formattedDate.split('-');
-
-            const zeroBasedMonth = parseInt(month, 10) - 1;
-
-            const tdSelector = `td.undefined[data-handler="selectDay"][data-event="click"][data-month="${zeroBasedMonth}"][data-year="${year}"]`;
-            const linkSelector = 'a.ui-state-default';
-            const nextButtonSelector = 'a.ui-datepicker-next[data-handler="next"]';
-
-            let isDateVisible = false;
-            let attempts = 0;
-            const maxAttempts = getMonthsDifference(now, earliestDate); // calculate amount of clicks needed to see the available date
-            logStep(`Month Difference is ${maxAttempts}`)
-            while (!isDateVisible && attempts < maxAttempts) {
-                logStep(`Attempt ${attempts}: Checking for date visibility...`);
-                isDateVisible = await page.evaluate((tdSelector) => {
-                    return !!document.querySelector(tdSelector);
-                }, tdSelector);
-
-                if (!isDateVisible) {
-                    logStep('Date not visible, clicking next...');
-                    const nextButtonVisible = await page.evaluate((selector) => {
-                        return !!document.querySelector(selector);
-                    }, nextButtonSelector);
-
-                    if (!nextButtonVisible) {
-                        throw new Error(`Next button not found on attempt ${attempts}.`);
-                    }
-                    await page.click(nextButtonSelector);
-                    // await delayMs(500);
-                    attempts++;
-                }
-            }
-            if (!isDateVisible) {
-                throw new Error(`Failed to find the desired date (${formattedDate}) after ${maxAttempts} attempts. Possible DOM structure issue.`);
-            }
-
-            // Click the link inside the <td> element once it is visible
-            await page.evaluate((tdSelector, linkSelector) => {
-                const tdElement = document.querySelector(tdSelector);
-                if (tdElement) {
-                    const linkElement = tdElement.querySelector(linkSelector);
-                    if (linkElement) {
-                        linkElement.click();
-                    } else {
-                        throw new Error('Link element not found inside the specified <td>.');
-                    }
-                } else {
-                    throw new Error('Specified <td> element not found.');
-                }
-            }, tdSelector, linkSelector);
-
-            logStep('Rescheduling step #2.2 date selector clicked');
-
-            // await delayMs(500);
-
-            const timeSelector = 'select#appointments_consulate_appointment_time';
-            await page.$eval(timeSelector, element => element.scrollIntoView());
-            await page.waitForSelector(timeSelector, {visible: true, timeout: 5000});
-            await page.select(timeSelector, availableTimes[0]);
-
-            // Get all available values from the <select> element
-            const options = await page.$$eval(`${timeSelector} option`, (options) =>
-                options.map(option => option.value).filter(value => value !== '') // Exclude empty values
-            );
-            logStep(`Available options: ${options}`);
-
-            // await delayMs(500);
-            logStep('Rescheduling step #3 time clicked');
-
-            const submitButtonSelector = 'input#appointments_submit';
-            await page.waitForSelector(submitButtonSelector);
-            const isEnabledSubmitButton = await page.$eval(submitButtonSelector, (input) => {
-                return !input.disabled;
-            });
-
-            if (isEnabledSubmitButton) {
-                console.log('Input button is enabled. Clicking...');
-                await page.click(submitButtonSelector);
-            } else {
-                console.log('Input button is disabled.');
-            }
-
-            // await delayMs(500);
-
-            logStep('Rescheduling step #4 submit button clicked');
-
-            const confirmButtonSelector = 'div[data-confirm-footer] a.button.alert';
-
-            // Wait for the Confirm button to be visible on the page
-            await page.waitForSelector(confirmButtonSelector, {visible: true});
-            const isEnabledConfirmButton = await page.$eval(confirmButtonSelector, (button) => {
-                return !button.disabled;
-            });
-
-            if (isEnabledConfirmButton) {
-                console.log('Confirm button is enabled. Clicking...');
-                await page.click(confirmButtonSelector);
-            } else {
-                console.log('Confirm button is disabled.');
-            }
-
-            await sendTelegramNotification(`Booking for ${formattedDate} at ${availableTimes[0]} completed`);
-            await sendTelegramScreenshot(page, `reschedule_finished_${formattedDate}`);
-        }
-    } catch (err) {
-        console.error(err);
-        await sendTelegramNotification(`Huston we have a problem during rescheduling: ${err}`);
-        const formattedDate = format(now, dateFormat);
-        await sendTelegramScreenshot(page, `error_reschedule_on_date_${formattedDate}`);
-
-        // trying alternative rescheduling
-        const rescheduleSuccessful = await rescheduleAlt(page, format(earliestDate, dateFormat), availableTimes[0], siteInfo.FACILITY_ID);
-
-        if (!rescheduleSuccessful) {
-            // try to reschedule one more time if date is still available
-            const earliestDateAvailable = await checkForSchedules(page);
-            if (earliestDateAvailable && isEqual(earliestDateAvailable, earliestDate)) {
-                await reschedule(page, earliestDate, availableTimes);
-            }
-        }
-    }
+    return parsedDate;
 }
 
-async function rescheduleAlt(page, date, appointment_time, facility_id) {
-    let success = false;
-    logStep(`Starting Alt Reschedule (${date})`);
+async function reschedule(page, earliestDateAvailable, appointment_time, facility_id) {
     const now = new Date();
-    const formattedDate = format(now, dateFormat);
+    const formattedNowDate = format(now, dateFormat);
+    const dateAsStr = format(earliestDateAvailable, dateFormat);
+    logStep(`Starting Alt Reschedule (${dateAsStr})`);
     try {
         await page.goto(siteInfo.APPOINTMENTS_URL);
 
@@ -228,7 +104,7 @@ async function rescheduleAlt(page, date, appointment_time, facility_id) {
             "confirmed_limit_message": await page.$eval('input[name="confirmed_limit_message"]', el => el.value),
             "use_consulate_appointment_capacity": await page.$eval('input[name="use_consulate_appointment_capacity"]', el => el.value),
             "appointments[consulate_appointment][facility_id]": facility_id,
-            "appointments[consulate_appointment][date]": date,
+            "appointments[consulate_appointment][date]": dateAsStr,
             "appointments[consulate_appointment][time]": appointment_time,
         };
 
@@ -250,25 +126,23 @@ async function rescheduleAlt(page, date, appointment_time, facility_id) {
                 body: new FormData(form),
             });
         }, formData);
-        console.log(`response.ok: ${response.ok}, response.status: ${response.status}`);
-        const text = await response.text();
-        console.log(`response.text: ${text}`);
-        if (response.ok && text.includes('Successfully Scheduled')) {
-            const msg = `Rescheduled Successfully! ${date} ${appointment_time}`;
+
+        const bookedDate = await getMainPageDetails(page);
+        const bookedDateStr = format(bookedDate, dateFormat)
+        logStep(`Booked date: ${bookedDateStr} vs earliest date: ${dateAsStr}`)
+        if (bookedDateStr === dateAsStr) {
+            const msg = `Rescheduled Successfully! ${dateAsStr} ${appointment_time}`;
             await sendTelegramNotification(msg);
-            await sendTelegramScreenshot(page, `reschedule_successful_${formattedDate}`);
-            success = true;
+            await sendTelegramScreenshot(page, `reschedule_successful_${formattedNowDate}`);
         } else {
-            const msg = `Reschedule Failed. ${date} ${appointment_time}. Status: ${response.status}`;
+            const msg = `Reschedule Failed. ${dateAsStr} ${appointment_time}. Status: ${response.status}`;
             await sendTelegramNotification(msg);
-            await sendTelegramScreenshot(page, `reschedule_failed_${formattedDate}`);
+            await sendTelegramScreenshot(page, `reschedule_failed_${formattedNowDate}`);
         }
     } catch (error) {
         console.error('Error during reschedule:', error);
         await sendTelegramNotification(`Huston we have a problem during ALT rescheduling: ${err}`);
-        await sendTelegramScreenshot(page, `error_alt_reschedule_on_date_${formattedDate}`);
-    } finally {
-        return success;
+        await sendTelegramScreenshot(page, `error_alt_reschedule_on_date_${formattedNowDate}`);
     }
 }
 
@@ -279,24 +153,30 @@ const sendTelegramNotification = async (message) => {
 };
 
 const sendTelegramScreenshot = async (page, fileName) => {
-    const logName = `${fileName}.png`;
-    await page.screenshot({path: logName, fullPage: true});
+    try {
+        const logName = `${fileName}.png`;
 
-    bot.sendPhoto(chatId, logName)
-        .then(() => console.log('Screenshot sent!'))
-        .catch((err) => console.error('Error sending screenshot:', err));
-};
+        const dimensions = await page.evaluate(() => {
+            return {
+                width: document.documentElement.offsetWidth,
+                height: document.documentElement.offsetHeight,
+            };
+        });
 
-const notifyMeViaTelegram = async (earliestDate, availableTimes) => {
-    if (config.telegram.NOTIFY_TG_TOKEN === '' || config.telegram.NOTIFY_TG_CHAT_ID === '') {
-        logStep('Telegram token or chat id is not provided, skipping telegram notification');
-        return;
+        if (dimensions.width > 0 && dimensions.height > 0) {
+            await page.screenshot({path: logName, fullPage: true});
+            bot.sendPhoto(chatId, logName)
+                .then(() => console.log('Screenshot sent!'))
+                .catch((err) => console.error('Error sending screenshot:', err));
+        } else {
+            logStep('The page has zero width or height.');
+        }
+    } catch (err) {
+        const msg = `Error during taking screenshot: ${err}`;
+        logStep(msg)
+        await sendTelegramNotification(msg)
     }
-    const formattedDate = format(earliestDate, dateFormat);
-    logStep(`sending an TG notification to schedule for ${formattedDate}. Available times are: ${availableTimes}`);
-
-    await sendTelegramNotification(`Hurry and schedule for ${formattedDate} before it is taken. Available times are: ${availableTimes}`);
-}
+};
 
 const checkForSchedules = async (page) => {
     logStep('checking for schedules');
@@ -379,30 +259,13 @@ const process = async () => {
 
                     let shiftDate = addDays(now, EARLIEST_DATE_SHIFT);
                     if (isBefore(earliestDateAvailable, shiftDate)) {
-                        logStep(`Earliest date ${earliestDateStr} is before minimum allowed date ${shiftDate}`);
-                        throw new Error(`Earliest date ${earliestDateStr} is before minimum allowed date ${shiftDate}`);
+                        const msg = `Earliest date ${earliestDateStr} is before minimum allowed date ${shiftDate}`;
+                        logStep(msg);
+                        throw new Error(msg);
                     }
 
-                    let diff = Math.round((earliestDateAvailable - now) / (1000 * 60 * 60 * 24))
-
-                    const row = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString() + "," + earliestDateStr + "," + diff + "," + availableTimes + "\n"
-
-                    fs.appendFile('./dates.csv', row, err => {
-                        if (err) {
-                            console.error(err);
-                        }
-                    });
                     if (isBefore(earliestDateAvailable, parseISO(NOTIFY_ON_DATE_BEFORE))) {
-                        let scheduled = false;
-                        try {
-                            scheduled = await rescheduleAlt(page, format(earliestDateAvailable, dateFormat), availableTimes[0], siteInfo.FACILITY_ID);
-                        } catch (err) {
-                            logStep("Failed to reschedule using ALT method #1");
-                        }
-                        if (!scheduled) {
-                            await reschedule(page, earliestDateAvailable, availableTimes);
-                            await notifyMeViaTelegram(earliestDateAvailable, availableTimes);
-                        }
+                        await reschedule(page, earliestDateAvailable, availableTimes[0], siteInfo.FACILITY_ID);
                     }
                 }
             }
@@ -410,8 +273,6 @@ const process = async () => {
     } catch (err) {
         console.error(err);
         await sendTelegramNotification(`Huston we have a problem: ${err}`);
-        const formattedDate = format(now, dateFormat);
-        await sendTelegramScreenshot(page, `error_on_date_${formattedDate}`);
     }
 
     await browser.close();
@@ -427,18 +288,6 @@ function getAvailableTimesUrl(availableDate) {
     return siteInfo.AVAILABLE_TIMES_URL + `?date=${availableDate}&appointments[expedite]=false`
 }
 
-function getMonthsDifference(start, endDate) {
-    // Parse the dates if they are not Date objects
-    const end = new Date(endDate);
-
-    // Calculate the year and month difference
-    const yearsDiff = end.getFullYear() - start.getFullYear();
-    const monthsDiff = end.getMonth() - start.getMonth();
-
-    // Combine year and month difference into total months
-    return yearsDiff * 12 + monthsDiff - 1;
-}
-
 (async () => {
     try {
         await process();
@@ -452,8 +301,4 @@ function addDays(date, days) {
     const result = new Date(date);
     result.setDate(result.getDate() + days);
     return result;
-}
-
-async function delayMs(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
 }
