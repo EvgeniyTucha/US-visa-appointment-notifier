@@ -272,7 +272,9 @@ const process = async () => {
         }
     } catch (err) {
         console.error(err);
-        await sendTelegramNotification(`Huston we have a problem: ${err}`);
+        if (err.name !== 'TimeoutError') {
+            await sendTelegramNotification(`Huston we have a problem: ${err}`);
+        }
     }
 
     await browser.close();
@@ -297,8 +299,6 @@ function getAvailableTimesUrl(availableDate) {
     }
 })();
 
-function addDays(date, days) {
-    const result = new Date(date);
-    result.setDate(result.getDate() + days);
-    return result;
+function addDays(theDate, days) {
+    return new Date(theDate.getTime() + days * 24 * 60 * 60 * 1000);
 }
