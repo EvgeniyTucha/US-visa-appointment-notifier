@@ -3,6 +3,7 @@ const {parseISO, compareAsc, isBefore, format, isEqual} = require('date-fns')
 require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const dateFormat = 'yyyy-MM-dd';
+const fs = require('fs');
 
 const {delay, logStep, debug} = require('./utils');
 const {
@@ -20,7 +21,6 @@ const {da} = require("date-fns/locale");
 let maxTries = MAX_NUMBER_OF_POLL
 const botToken = config.telegram.NOTIFY_TG_TOKEN;
 const chatId = config.telegram.NOTIFY_TG_CHAT_ID;
-const bot = new TelegramBot(botToken, {polling: true});
 
 const loginAndFetchActiveBookingDate = async (page) => {
     logStep('logging in');
@@ -49,15 +49,23 @@ const loginAndFetchActiveBookingDate = async (page) => {
     await signInButton.click();
 
     await page.waitForNavigation();
+    const countryCode = siteInfo.COUNTRY_CODE;
+    const scheduleId = siteInfo.SCHEDULE_ID;
+    const bodyText = await page.evaluate((countryCode, scheduleId) => {
+        const appointmentElements = document.querySelectorAll('.consular-appt'); // Select all elements with class "consular-appt"
 
-    const bodyText = await page.evaluate(() => {
-        return document.querySelector('.consular-appt').innerText
-    });
-
-    const match = bodyText.match(/(\d{1,2} \w+, \d{4}, \d{2}:\d{2})/);
-
+        for (const element of appointmentElements) {
+            const linkElement = element.querySelector(`a[href*="/${countryCode}/niv/schedule/${scheduleId}"]`);
+            if (linkElement) {
+                // Match the date within the current `.consular-appt` element
+                const dateText = element.innerText.match(/\d{1,2} \w+, \d{4}, \d{2}:\d{2}/);
+                return dateText ? dateText[0].trim() : null; // Return the date if found
+            }
+        }
+        return null;
+    }, countryCode, scheduleId);
     // Vancouver is in GMT-7 for local time
-    const parsedDate = new Date(match[1] + " GMT-7");
+    const parsedDate = new Date(bodyText + " GMT-7");
     logStep(`Parsed booked date: ${parsedDate} from profile`);
 
     // Subtract 2 days
@@ -66,7 +74,6 @@ const loginAndFetchActiveBookingDate = async (page) => {
     logStep(`Booked date -2 days to compare: ${newDate}`);
     return newDate;
 }
-
 
 const getMainPageDetails = async (page) => {
     logStep('checking main page details for current booking date');
@@ -147,6 +154,7 @@ async function reschedule(page, earliestDateAvailable, appointment_time, facilit
 }
 
 const sendTelegramNotification = async (message) => {
+    const bot = new TelegramBot(botToken, {polling: false});
     bot.sendMessage(chatId, message)
         .then(() => console.log('Notification sent!'))
         .catch((err) => console.error('Error sending notification:', err));
@@ -165,6 +173,7 @@ const sendTelegramScreenshot = async (page, fileName) => {
 
         if (dimensions.width > 0 && dimensions.height > 0) {
             await page.screenshot({path: logName, fullPage: true});
+            const bot = new TelegramBot(botToken, {polling: false});
             bot.sendPhoto(chatId, logName)
                 .then(() => console.log('Screenshot sent!'))
                 .catch((err) => console.error('Error sending screenshot:', err));
@@ -257,6 +266,13 @@ const process = async () => {
                 if (availableTimes) {
                     logStep(`Earliest date found is ${earliestDateStr}, available times are ${availableTimes}`);
 
+                    const row = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString() + "," + earliestDateStr + "," + availableTimes + "\n"
+
+                    fs.appendFile('./dates.csv', row, err => {
+                        if (err) {
+                            console.error(err);
+                        }
+                    });
                     let shiftDate = addDays(now, EARLIEST_DATE_SHIFT);
                     if (isBefore(earliestDateAvailable, shiftDate)) {
                         const msg = `Earliest date ${earliestDateStr} is before minimum allowed date ${shiftDate}`;

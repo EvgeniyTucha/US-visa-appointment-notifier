@@ -40,10 +40,5 @@ module.exports = {
     telegram: {
         NOTIFY_TG_CHAT_ID: process.env.NOTIFY_TG_CHAT_ID, // chat id to send notification
         NOTIFY_TG_TOKEN: process.env.NOTIFY_TG_TOKEN, // tg token
-    },
-    mailgun: {
-        USERNAME: process.env.MAILGUN_USERNAME,
-        DOMAIN: process.env.MAILGUN_DOMAIN,
-        API_KEY: process.env.MAILGUN_API_KEY,
     }
 }
