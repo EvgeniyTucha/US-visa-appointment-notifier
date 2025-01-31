@@ -3,6 +3,7 @@ const {parseISO, compareAsc, isBefore, format, isEqual} = require('date-fns')
 require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const dateFormat = 'yyyy-MM-dd';
+const cron = require('node-cron');
 const fs = require('fs');
 
 const {delay, logStep, debug} = require('./utils');
@@ -257,22 +258,22 @@ const process = async () => {
 
         const earliestDateAvailable = await checkForSchedules(page);
         if (earliestDateAvailable) {
+            let earliestDateStr = format(earliestDateAvailable, dateFormat);
+            const row = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString() + "," + earliestDateStr + "\n"
+
+            fs.appendFile('./dates.csv', row, err => {
+                if (err) {
+                    console.error(err);
+                }
+            });
             if (!isBefore(earliestDateAvailable, activeAppointmentDate)) {
                 logStep(`Earliest date [${format(earliestDateAvailable, dateFormat)}] available to book is after already scheduled appointment on [${format(activeAppointmentDate, dateFormat)}]`)
             } else {
-                let earliestDateStr = format(earliestDateAvailable, dateFormat);
                 let availableTimes = await checkForAvailableTimes(page, earliestDateStr);
 
                 if (availableTimes) {
                     logStep(`Earliest date found is ${earliestDateStr}, available times are ${availableTimes}`);
 
-                    const row = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString() + "," + earliestDateStr + "," + availableTimes + "\n"
-
-                    fs.appendFile('./dates.csv', row, err => {
-                        if (err) {
-                            console.error(err);
-                        }
-                    });
                     let shiftDate = addDays(now, EARLIEST_DATE_SHIFT);
                     if (isBefore(earliestDateAvailable, shiftDate)) {
                         const msg = `Earliest date ${earliestDateStr} is before minimum allowed date ${shiftDate}`;
@@ -318,3 +319,45 @@ function getAvailableTimesUrl(availableDate) {
 function addDays(theDate, days) {
     return new Date(theDate.getTime() + days * 24 * 60 * 60 * 1000);
 }
+
+async function getClosestDates() {
+    try {
+        const csvData = fs.readFileSync('./dates.csv', 'utf-8');
+        const rows = csvData.trim().split('\n');
+        const now = new Date();
+        const yesterdayISO = new Date(now.getTime() - (24 * 60 * 60 * 1000) - (now.getTimezoneOffset() * 60000))
+            .toISOString()
+            .slice(0, 10);
+
+        const dates = rows
+            .map(row => {
+                const [dateStr, returnDate] = row.split(',').map(item => item.trim());
+                return {compareDate: new Date(dateStr), returnDate};
+            })
+            .filter(entry => entry.compareDate.toISOString().startsWith(yesterdayISO)); // Sort by the first column date
+
+        if (dates) {
+            const closestDates = Array.from(
+                new Set(dates.map(entry => entry.returnDate))
+            )
+                .sort((a, b) => new Date(a) - new Date(b))
+                .slice(0, 3);
+
+            // Ensure closestDates always has 3 elements by padding with "N/A"
+            while (closestDates.length < 3) {
+                closestDates.push("N/A");
+            }
+            const message = 'Closest Dates found on ' + yesterdayISO + ': [ ' + closestDates + ' ]';
+            console.log(message);
+            await sendTelegramNotification(message);
+        }
+    } catch (error) {
+        console.error('Error reading or processing CSV file:', error);
+    }
+}
+
+// Schedule the function to run daily at 00:01 (1 minute past midnight)
+cron.schedule('1 0 * * *', () => {
+    logStep('Running scheduled task for daily closest dates');
+    getClosestDates();
+});
