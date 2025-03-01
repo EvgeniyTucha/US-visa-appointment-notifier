@@ -200,7 +200,7 @@ const checkForSchedules = async (page) => {
         return document.querySelector('body').innerText
     });
 
-    const parsedBody = JSON.parse(bodyText);
+    const parsedBody = safeJsonParse(bodyText);
 
     if (!Array.isArray(parsedBody)) {
         throw new ApplicationError("Failed to parse dates, probably because you are not logged in");
@@ -227,7 +227,7 @@ const checkForAvailableTimes = async (page, earliestDateStr) => {
         return document.querySelector('body').innerText
     });
 
-    const parsedBody = JSON.parse(bodyText);
+    const parsedBody = safeJsonParse(bodyText);
     const availableTimes = parsedBody.available_times;
     if (availableTimes.length > 0 && availableTimes[0] == null) {
         logStep(`NO available times for the date : ${earliestDateStr} response : ${JSON.stringify(parsedBody)}`);
@@ -376,5 +376,20 @@ class ApplicationError extends Error {
     constructor(message) {
         super(message);
         this.name = "ApplicationError";
+    }
+}
+
+function safeJsonParse(jsonString) {
+    if (!jsonString) {
+        logStep("Received empty JSON input");
+        throw new ApplicationError("Received empty JSON input");
+    }
+
+    try {
+        return JSON.parse(jsonString);
+    } catch (error) {
+        logStep(`JSON Parsing Error: ${error.message}`);
+        logStep(`Received Data:" ${jsonString.slice(0, 100)}`);
+        throw new ApplicationError("JSON Parsing Error");
     }
 }
