@@ -32,7 +32,7 @@ const loginAndFetchActiveBookingDate = async (page) => {
 
     const form = await page.$("form#sign_in_form");
     if (!form) {
-        throw new Error("Login form not found on the page");
+        throw new ApplicationError("Login form not found on the page");
     }
 
     const email = await form.$('input[name="user[email]"]');
@@ -41,7 +41,7 @@ const loginAndFetchActiveBookingDate = async (page) => {
     const signInButton = await form.$('input[name="commit"]');
 
     if (!email || !password || !privacyTerms || !signInButton) {
-        throw new Error("One or more form fields not found");
+        throw new ApplicationError("One or more form fields not found");
     }
 
     await email.type(loginCred.EMAIL);
@@ -203,7 +203,7 @@ const checkForSchedules = async (page) => {
     const parsedBody = JSON.parse(bodyText);
 
     if (!Array.isArray(parsedBody)) {
-        throw "Failed to parse dates, probably because you are not logged in";
+        throw new ApplicationError("Failed to parse dates, probably because you are not logged in");
     }
 
     const dates = parsedBody.map(item => parseISO(item.date));
@@ -238,16 +238,18 @@ const checkForAvailableTimes = async (page, earliestDateStr) => {
 }
 
 const process = async () => {
-    const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-    puppeteer.use(StealthPlugin());
-    const browser = await puppeteer.launch(!IS_PROD ? {headless: false} : {args: ['--no-sandbox', '--disable-setuid-sandbox']});
-
-    logStep(`starting process with ${maxTries} tries left`);
-
-    const now = new Date();
-    const page = await browser.newPage();
-
+    let browser;
     try {
+        const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+        puppeteer.use(StealthPlugin());
+        browser = await puppeteer.launch(!IS_PROD ? {headless: false} : {args: ['--no-sandbox', '--disable-setuid-sandbox']});
+
+        logStep(`starting process with ${maxTries} tries left`);
+
+        const now = new Date();
+        const page = await browser.newPage();
+        page.setDefaultTimeout(60000);
+
         if (maxTries-- <= 0) {
             await sendTelegramNotification('Max retries reached. Please restart the process.');
             console.log('Reached Max tries')
@@ -278,7 +280,7 @@ const process = async () => {
                     if (isBefore(earliestDateAvailable, shiftDate)) {
                         const msg = `Earliest date ${earliestDateStr} is before minimum allowed date ${shiftDate}`;
                         logStep(msg);
-                        throw new Error(msg);
+                        throw new ApplicationError(msg);
                     }
 
                     if (isBefore(earliestDateAvailable, parseISO(NOTIFY_ON_DATE_BEFORE))) {
@@ -287,34 +289,42 @@ const process = async () => {
                 }
             }
         }
+        await browser.close();
+        logStep(`Sleeping for ${NEXT_SCHEDULE_POLL_MIN} minutes`)
+        await delay(NEXT_SCHEDULE_POLL_MIN)
+        await process()
     } catch (err) {
         console.error(err);
-        if (err.name !== 'TimeoutError') {
+        if (err.name !== 'TimeoutError' || err.name !== 'ApplicationError') {
             await sendTelegramNotification(`Huston we have a problem: ${err}`);
         }
+
+    } finally {
+        if (browser) {
+            await browser.close();
+        }
+        logStep(`Sleeping for ${NEXT_SCHEDULE_POLL_MIN} minutes`)
+        await delay(NEXT_SCHEDULE_POLL_MIN)
+        await process()
     }
-
-    await browser.close();
-
-    logStep(`Sleeping for ${NEXT_SCHEDULE_POLL_MIN} minutes`)
-
-    await delay(NEXT_SCHEDULE_POLL_MIN)
-
-    await process()
 }
 
 function getAvailableTimesUrl(availableDate) {
     return siteInfo.AVAILABLE_TIMES_URL + `?date=${availableDate}&appointments[expedite]=false`
 }
 
-(async () => {
+async function runProcess() {
     try {
         await process();
     } catch (err) {
-        console.error(err);
-        await sendTelegramNotification(`Huston we have a problem: ${err}. \n Script stopped`);
+        console.error("Error:", err);
+        await delay(NEXT_SCHEDULE_POLL_MIN);
+        await sendTelegramNotification(`Houston, we have a problem: ${err}. \n\n\n Script restarting...`);
+        await runProcess();
     }
-})();
+}
+
+runProcess();
 
 function addDays(theDate, days) {
     return new Date(theDate.getTime() + days * 24 * 60 * 60 * 1000);
@@ -361,3 +371,10 @@ cron.schedule('1 0 * * *', () => {
     logStep('Running scheduled task for daily closest dates');
     getClosestDates();
 });
+
+class ApplicationError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = "ApplicationError";
+    }
+}
