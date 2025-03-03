@@ -1,12 +1,13 @@
 const puppeteer = require('puppeteer-extra');
 const {parseISO, compareAsc, isBefore, format, isEqual} = require('date-fns')
 require('dotenv').config();
-const TelegramBot = require('node-telegram-bot-api');
 const dateFormat = 'yyyy-MM-dd';
 const cron = require('node-cron');
 const fs = require('fs');
 
 const {delay, logStep, debug} = require('./utils');
+const {sendTelegramNotification, sendTelegramScreenshot} = require('./notifier');
+const getClosestDates = require('./cronJob');
 const {
     siteInfo,
     loginCred,
@@ -16,12 +17,9 @@ const {
     NOTIFY_ON_DATE_BEFORE,
     EARLIEST_DATE_SHIFT
 } = require('./config');
-const config = require("./config");
-const {da} = require("date-fns/locale");
 
 let maxTries = MAX_NUMBER_OF_POLL
-const botToken = config.telegram.NOTIFY_TG_TOKEN;
-const chatId = config.telegram.NOTIFY_TG_CHAT_ID;
+
 
 const loginAndFetchActiveBookingDate = async (page) => {
     logStep('logging in');
@@ -154,39 +152,6 @@ async function reschedule(page, earliestDateAvailable, appointment_time, facilit
     }
 }
 
-const sendTelegramNotification = async (message) => {
-    const bot = new TelegramBot(botToken, {polling: false});
-    bot.sendMessage(chatId, message)
-        .then(() => console.log('Notification sent!'))
-        .catch((err) => console.error('Error sending notification:', err));
-};
-
-const sendTelegramScreenshot = async (page, fileName) => {
-    try {
-        const logName = `${fileName}.png`;
-
-        const dimensions = await page.evaluate(() => {
-            return {
-                width: document.documentElement.offsetWidth,
-                height: document.documentElement.offsetHeight,
-            };
-        });
-
-        if (dimensions.width > 0 && dimensions.height > 0) {
-            await page.screenshot({path: logName, fullPage: true});
-            const bot = new TelegramBot(botToken, {polling: false});
-            bot.sendPhoto(chatId, logName)
-                .then(() => console.log('Screenshot sent!'))
-                .catch((err) => console.error('Error sending screenshot:', err));
-        } else {
-            logStep('The page has zero width or height.');
-        }
-    } catch (err) {
-        const msg = `Error during taking screenshot: ${err}`;
-        logStep(msg)
-        await sendTelegramNotification(msg)
-    }
-};
 
 const checkForSchedules = async (page) => {
     logStep('checking for schedules');
@@ -203,7 +168,7 @@ const checkForSchedules = async (page) => {
     const parsedBody = safeJsonParse(bodyText);
 
     if (!Array.isArray(parsedBody)) {
-        throw new ApplicationError("Failed to parse dates, probably because you are not logged in");
+        throw new ApplicationError("Failed to parse dates from response");
     }
 
     const dates = parsedBody.map(item => parseISO(item.date));
@@ -295,10 +260,9 @@ const process = async () => {
         await process()
     } catch (err) {
         console.error(err);
-        if (err.name !== 'TimeoutError' || err.name !== 'ApplicationError') {
+        if (err.name !== 'TimeoutError' && err.name !== 'ApplicationError') {
             await sendTelegramNotification(`Huston we have a problem: ${err}`);
         }
-
     } finally {
         if (browser) {
             await browser.close();
@@ -330,46 +294,14 @@ function addDays(theDate, days) {
     return new Date(theDate.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
-async function getClosestDates() {
-    try {
-        const csvData = fs.readFileSync('./dates.csv', 'utf-8');
-        const rows = csvData.trim().split('\n');
-        const now = new Date();
-        const yesterdayISO = new Date(now.getTime() - (24 * 60 * 60 * 1000) - (now.getTimezoneOffset() * 60000))
-            .toISOString()
-            .slice(0, 10);
-
-        const dates = rows
-            .map(row => {
-                const [dateStr, returnDate] = row.split(',').map(item => item.trim());
-                return {compareDate: new Date(dateStr), returnDate};
-            })
-            .filter(entry => entry.compareDate.toISOString().startsWith(yesterdayISO)); // Sort by the first column date
-
-        if (dates) {
-            const closestDates = Array.from(
-                new Set(dates.map(entry => entry.returnDate))
-            )
-                .sort((a, b) => new Date(a) - new Date(b))
-                .slice(0, 3);
-
-            // Ensure closestDates always has 3 elements by padding with "N/A"
-            while (closestDates.length < 3) {
-                closestDates.push("N/A");
-            }
-            const message = 'Closest Dates found on ' + yesterdayISO + ': [ ' + closestDates + ' ]';
-            console.log(message);
-            await sendTelegramNotification(message);
-        }
-    } catch (error) {
-        console.error('Error reading or processing CSV file:', error);
-    }
-}
-
 // Schedule the function to run daily at 00:01 (1 minute past midnight)
 cron.schedule('1 0 * * *', () => {
     logStep('Running scheduled task for daily closest dates');
-    getClosestDates();
+    getClosestDates().then(result => {
+        console.log(result);
+    }).catch(error => {
+        console.error("Error:", error);
+    });
 });
 
 class ApplicationError extends Error {
