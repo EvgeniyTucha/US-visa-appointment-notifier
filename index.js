@@ -226,13 +226,7 @@ const process = async () => {
         const earliestDateAvailable = await checkForSchedules(page);
         if (earliestDateAvailable) {
             let earliestDateStr = format(earliestDateAvailable, dateFormat);
-            const row = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString() + "," + earliestDateStr + "\n"
 
-            fs.appendFile('./dates.csv', row, err => {
-                if (err) {
-                    console.error(err);
-                }
-            });
             if (!isBefore(earliestDateAvailable, activeAppointmentDate)) {
                 logStep(`Earliest date [${format(earliestDateAvailable, dateFormat)}] available to book is after already scheduled appointment on [${format(activeAppointmentDate, dateFormat)}]`)
             } else {
@@ -240,6 +234,8 @@ const process = async () => {
 
                 if (availableTimes) {
                     logStep(`Earliest date found is ${earliestDateStr}, available times are ${availableTimes}`);
+
+                    writeDateToFile(now, earliestDateStr, availableTimes).catch(console.error);
 
                     let shiftDate = addDays(now, EARLIEST_DATE_SHIFT);
                     if (isBefore(earliestDateAvailable, shiftDate)) {
@@ -271,6 +267,16 @@ const process = async () => {
         await delay(NEXT_SCHEDULE_POLL_MIN)
         await process()
     }
+}
+
+async function writeDateToFile(now, earliestDateStr, availableTimes) {
+    const row = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString() + "," + earliestDateStr + "," + availableTimes + "\n"
+
+    fs.appendFile('./dates.csv', row, err => {
+        if (err) {
+            console.error(err);
+        }
+    });
 }
 
 function getAvailableTimesUrl(availableDate) {

@@ -12,23 +12,23 @@ module.exports = async function getClosestDates() {
 
         const dates = rows
             .map(row => {
-                const [dateStr, returnDate] = row.split(',').map(item => item.trim());
-                return {compareDate: new Date(dateStr), returnDate};
+                const [dateStr, returnDate, returnTime] = row.split(',').map(item => item.trim());
+                return {compareDate: new Date(dateStr), returnDate, returnTime};
             })
-            .filter(entry => entry.compareDate.toISOString().startsWith(yesterdayISO)); // Sort by the first column date
+            .filter(entry => entry.compareDate.toISOString().startsWith(yesterdayISO));
 
-        if (dates) {
+        if (dates.length > 0) {
             const closestDates = Array.from(
-                new Set(dates.map(entry => entry.returnDate))
+                new Set(dates.map(entry => `${entry.returnDate} ${entry.returnTime}`)) // Store date and time together
             )
-                .sort((a, b) => new Date(a) - new Date(b))
+                .sort((a, b) => new Date(a.split(' ')[0]) - new Date(b.split(' ')[0])) // Sort by returnDate
                 .slice(0, 3);
 
             // Ensure closestDates always has 3 elements by padding with "N/A"
             while (closestDates.length < 3) {
                 closestDates.push("N/A");
             }
-            const message = 'Closest Dates found on ' + yesterdayISO + ': [ ' + closestDates + ' ]';
+            const message = 'Closest Dates found on ' + yesterdayISO + ': [ ' + closestDates.join(', ') + ' ]';
             console.log(message);
             await sendTelegramNotification(message);
         }
