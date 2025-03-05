@@ -259,9 +259,7 @@ const process = async () => {
             await sendTelegramNotification(`Huston we have a problem: ${err}`);
         }
     } finally {
-        if (browser) {
-            await browser.close();
-        }
+        await browser.close();
         logStep(`Sleeping for ${NEXT_SCHEDULE_POLL_MIN} minutes`)
         await delay(NEXT_SCHEDULE_POLL_MIN)
         await process()
