@@ -213,7 +213,6 @@ const process = async () => {
 
         const now = new Date();
         const page = await browser.newPage();
-        page.setDefaultTimeout(60000);
 
         if (maxTries-- <= 0) {
             await sendTelegramNotification('Max retries reached. Please restart the process.');
