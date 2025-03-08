@@ -203,17 +203,15 @@ const checkForAvailableTimes = async (page, earliestDateStr) => {
 }
 
 const process = async () => {
-    let browser;
+    const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+    puppeteer.use(StealthPlugin());
+    const browser = await puppeteer.launch(!IS_PROD ? {headless: false} : {args: ['--no-sandbox', '--disable-setuid-sandbox']});
+
+    logStep(`starting process with ${maxTries} tries left`);
+
+    const now = new Date();
+    const page = await browser.newPage();
     try {
-        const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-        puppeteer.use(StealthPlugin());
-        browser = await puppeteer.launch(!IS_PROD ? {headless: false} : {args: ['--no-sandbox', '--disable-setuid-sandbox']});
-
-        logStep(`starting process with ${maxTries} tries left`);
-
-        const now = new Date();
-        const page = await browser.newPage();
-
         if (maxTries-- <= 0) {
             await sendTelegramNotification('Max retries reached. Please restart the process.');
             console.log('Reached Max tries')
@@ -249,21 +247,16 @@ const process = async () => {
                 }
             }
         }
-        await browser.close();
-        logStep(`Sleeping for ${NEXT_SCHEDULE_POLL_MIN} minutes`)
-        await delay(NEXT_SCHEDULE_POLL_MIN)
-        await process()
     } catch (err) {
         console.error(err);
         if (err.name !== 'TimeoutError' && err.name !== 'ApplicationError') {
             await sendTelegramNotification(`Huston we have a problem: ${err}`);
         }
-    } finally {
-        await browser.close();
-        logStep(`Sleeping for ${NEXT_SCHEDULE_POLL_MIN} minutes`)
-        await delay(NEXT_SCHEDULE_POLL_MIN)
-        await process()
     }
+    await browser.close();
+    logStep(`Sleeping for ${NEXT_SCHEDULE_POLL_MIN} minutes`)
+    await delay(NEXT_SCHEDULE_POLL_MIN)
+    await process()
 }
 
 async function writeDateToFile(now, earliestDateStr, availableTimes) {
