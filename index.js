@@ -144,6 +144,7 @@ async function reschedule(page, earliestDateAvailable, appointment_time, facilit
             const msg = `Reschedule Failed. ${dateAsStr} ${appointment_time}. Status: ${response.status}`;
             await sendTelegramNotification(msg);
             await sendTelegramScreenshot(page, `reschedule_failed_${formattedNowDate}`);
+            logStep(`Response for reschedule failed ${response}`)
         }
     } catch (error) {
         console.error('Error during reschedule:', error);
