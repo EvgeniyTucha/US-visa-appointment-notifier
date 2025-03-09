@@ -7,7 +7,7 @@ const fs = require('fs');
 
 const {delay, logStep, debug} = require('./utils');
 const {sendTelegramNotification, sendTelegramScreenshot} = require('./notifier');
-const getClosestDates = require('./cronJob');
+const {getClosestDates, logAnalyzer} = require('./cronJob');
 const {
     siteInfo,
     loginCred,
@@ -295,6 +295,16 @@ function addDays(theDate, days) {
 cron.schedule('1 0 * * *', () => {
     logStep('Running scheduled task for daily closest dates');
     getClosestDates().then(result => {
+        console.log(result);
+    }).catch(error => {
+        console.error("Error:", error);
+    });
+});
+
+// Schedule the function to run daily at 00:02 (2 minutes past midnight)
+cron.schedule('3 0 * * *', () => {
+    logStep('Running scheduled task log analyzer');
+    logAnalyzer().then(result => {
         console.log(result);
     }).catch(error => {
         console.error("Error:", error);
