@@ -6,7 +6,7 @@ const cron = require('node-cron');
 const fs = require('fs');
 
 const {delay, logStep, debug} = require('./utils');
-const {sendTelegramNotification, sendTelegramScreenshot} = require('./notifier');
+const {sendTelegramNotification, sendTelegramScreenshot, sendTelegramScreenshotSecure} = require('./notifier');
 const {getClosestDates, logAnalyzer} = require('./cronJob');
 const {
     siteInfo,
@@ -100,7 +100,7 @@ async function reschedule(page, earliestDateAvailable, appointment_time, facilit
     const now = new Date();
     const formattedNowDate = format(now, dateFormat);
     const dateAsStr = format(earliestDateAvailable, dateFormat);
-    logStep(`Starting Alt Reschedule (${dateAsStr})`);
+    logStep(`Starting Reschedule for the (${dateAsStr} ${appointment_time})`);
     try {
         await page.goto(siteInfo.APPOINTMENTS_URL);
 
@@ -139,11 +139,11 @@ async function reschedule(page, earliestDateAvailable, appointment_time, facilit
         if (bookedDateStr === dateAsStr) {
             const msg = `Rescheduled Successfully! ${dateAsStr} ${appointment_time}`;
             await sendTelegramNotification(msg);
-            await sendTelegramScreenshot(page, `reschedule_successful_${formattedNowDate}`);
+            await sendTelegramScreenshotSecure(page, `reschedule_successful_${formattedNowDate}`);
         } else {
             const msg = `Reschedule Failed. ${dateAsStr} ${appointment_time}. Status: ${response.status}`;
             await sendTelegramNotification(msg);
-            await sendTelegramScreenshot(page, `reschedule_failed_${formattedNowDate}`);
+            await sendTelegramScreenshotSecure(page, `reschedule_failed_${formattedNowDate}`);
             logStep(`Response for reschedule failed ${response}`)
         }
     } catch (error) {

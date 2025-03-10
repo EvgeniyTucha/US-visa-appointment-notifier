@@ -42,7 +42,48 @@ const sendTelegramScreenshot = async (page, fileName) => {
     }
 };
 
+
+const sendTelegramScreenshotSecure = async (page, fileName) => {
+    try {
+        const logName = `${fileName}.png`;
+
+        const element = await page.$('.application.attend_appointment.card.success');
+
+        if (element) {
+            await page.evaluate(el => {
+                const classesToHide = ['residence', 'delivery', 'medium-12.columns.text-right'];
+                classesToHide.forEach(className => {
+                    el.querySelectorAll(`.${className}`).forEach(child => {
+                        child.style.display = 'none';
+                    });
+                });
+                const rows = el.querySelectorAll('table.medium-12.columns tbody tr');
+                rows.forEach(row => {
+                    const cells = row.querySelectorAll('td');
+                    // hide the #passport and # ds-160
+                    for (let i = 1; i < 3; i++) {
+                        if (cells[i]) {
+                            cells[i].style.display = 'none';
+                        }
+                    }
+                });
+            }, element);
+
+            await element.screenshot({path: logName});
+            const bot = new TelegramBot(botToken, {polling: false});
+            bot.sendPhoto(chatId, logName)
+                .then(() => console.log('Screenshot sent!'))
+                .catch((err) => console.error('Error sending screenshot:', err));
+        }
+    } catch (err) {
+        const msg = `Error during taking secure screenshot: ${err}`;
+        logStep(msg)
+        await sendTelegramNotification(msg)
+    }
+};
+
 module.exports = {
     sendTelegramNotification,
-    sendTelegramScreenshot
+    sendTelegramScreenshot,
+    sendTelegramScreenshotSecure
 }
