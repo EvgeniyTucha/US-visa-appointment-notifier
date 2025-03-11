@@ -10,6 +10,7 @@ async function getClosestDates() {
         const yesterdayISO = new Date(now.getTime() - (24 * 60 * 60 * 1000) - (now.getTimezoneOffset() * 60000))
             .toISOString()
             .slice(0, 10);
+        logStep(`Closest dates found started for ${yesterdayISO}`)
 
         const dates = rows
             .map(row => {
@@ -34,6 +35,7 @@ async function getClosestDates() {
             logStep(message);
         }
         await sendTelegramNotification(message);
+        logStep(`Closest dates found finished for ${yesterdayISO}`)
     } catch (error) {
         logStep(`Error reading or processing CSV file: ${error.message}`);
     }
@@ -48,13 +50,15 @@ async function logAnalyzer() {
             .toLocaleDateString().split('/');
         const datePattern = `\\[(\\d+)\\] ${targetDate[0]}\\/${targetDate[1]}\\/${targetDate[2]}, (\\d+:\\d+:\\d+ [APM]+) ==> `;
         const regex = new RegExp(datePattern);
+        logStep(`Log analyzer started for ${targetDate}`)
+        logStep(`Log analyzer logs found size ${logs.length}`)
+
+        const logDate = new Date(`${targetDate[2]}-${targetDate[0]}-${targetDate[1]}`);
+        const dateStr = logDate.toISOString().split('T')[0];
 
         logs.forEach(line => {
             const dateMatch = line.match(regex);
             if (!dateMatch) return;
-
-            const logDate = new Date(`${targetDate[2]}-${targetDate[0]}-${targetDate[1]}`);
-            const dateStr = logDate.toISOString().split('T')[0];
 
             if (!stats[dateStr]) {
                 stats[dateStr] = { up: 0, down: 0 };
@@ -81,6 +85,9 @@ async function logAnalyzer() {
             await sendTelegramNotification(statsMsg);
             logStep(statsMsg);
         }
+        logStep(`Log analyzer finished for ${targetDate}`)
+
+        return true
     } catch (error) {
         logStep(`Error reading or processing log file: ${error.message}`);
     }
