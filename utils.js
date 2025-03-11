@@ -18,13 +18,17 @@ const delay = timeout => {
 };
 
 const logStep = (stepTitle) => {
-    const date = new Date();
-    const isoDateTime = new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString();
+    const isoDateTime = getIsoDateWithTimezoneOffset(new Date());
     console.log(`${isoDateTime} ==> Step: ${stepTitle}`);
+}
+
+const getIsoDateWithTimezoneOffset = (date) => {
+    return new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString();
 }
 
 module.exports = {
     debug,
     delay,
-    logStep
+    logStep,
+    getIsoDateWithTimezoneOffset
 }

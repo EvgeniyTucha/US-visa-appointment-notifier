@@ -47,27 +47,26 @@ async function logAnalyzer() {
         const stats = {};
         const now = new Date();
         const targetDate = new Date(now.getTime() - (24 * 60 * 60 * 1000) - (now.getTimezoneOffset() * 60000))
-            .toLocaleDateString().split('/');
-        const datePattern = `\\[(\\d+)\\] ${targetDate[0]}\\/${targetDate[1]}\\/${targetDate[2]}, (\\d+:\\d+:\\d+ [APM]+) ==> `;
-        const regex = new RegExp(datePattern);
+            .toISOString().split('T')[0];
+        const targetDateAsArray = targetDate.split('-');
+        const datePattern = new RegExp(
+            `\\[(\\d+)\\] ${targetDateAsArray[0]}-${targetDateAsArray[1]}-${targetDateAsArray[2]}T(\\d+:\\d+:\\d+\\.\\d+Z) ==> `
+        );        const regex = new RegExp(datePattern);
         logStep(`Log analyzer started for ${targetDate}`)
         logStep(`Log analyzer logs found size ${logs.length}`)
-
-        const logDate = new Date(`${targetDate[2]}-${targetDate[0]}-${targetDate[1]}`);
-        const dateStr = logDate.toISOString().split('T')[0];
 
         logs.forEach(line => {
             const dateMatch = line.match(regex);
             if (!dateMatch) return;
 
-            if (!stats[dateStr]) {
-                stats[dateStr] = { up: 0, down: 0 };
+            if (!stats[targetDate]) {
+                stats[targetDate] = { up: 0, down: 0 };
             }
 
             if (line.includes('Step: earliest available date found: undefined')) {
-                stats[dateStr].down++;
+                stats[targetDate].down++;
             } else if (line.includes('Step: earliest available date found:') && !line.includes('undefined')) {
-                stats[dateStr].up++;
+                stats[targetDate].up++;
             }
         });
 
