@@ -18,7 +18,9 @@ const delay = timeout => {
 };
 
 const logStep = (stepTitle) => {
-    console.log(`${new Date().toLocaleString()} ==> Step: ${stepTitle}`);
+    const date = new Date();
+    const isoDateTime = new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString();
+    console.log(`${isoDateTime} ==> Step: ${stepTitle}`);
 }
 
 module.exports = {
