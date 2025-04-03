@@ -284,13 +284,14 @@ function getAvailableTimesUrl(availableDate) {
 }
 
 async function runProcess() {
-    try {
-        await process();
-    } catch (err) {
-        console.error("Error:", err);
-        await delay(NEXT_SCHEDULE_POLL_MIN);
-        await sendTelegramNotification(`Houston, we have a problem: ${err}. \n\n\n Script restarting...`);
-        await runProcess();
+    while (true) {
+        try {
+            await process();
+        } catch (err) {
+            console.error("Error:", err);
+            await delay(NEXT_SCHEDULE_POLL_MIN);
+            await sendTelegramNotification(`Houston, we have a problem: ${err}. \n\n\n Script restarting...`);
+        }
     }
 }
 
