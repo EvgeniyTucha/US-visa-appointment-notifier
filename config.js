@@ -36,7 +36,6 @@ module.exports = {
     NOTIFY_ON_DATE_BEFORE: process.env.NOTIFY_ON_DATE_BEFORE, // in ISO format i.e YYYY-MM-DD
     EARLIEST_DATE_SHIFT: process.env.EARLIEST_DATE_SHIFT || 1, // default to 1 day shift
 
-    NOTIFY_EMAILS: process.env.NOTIFY_EMAILS, // comma separated list of emails
     telegram: {
         NOTIFY_TG_CHAT_ID: process.env.NOTIFY_TG_CHAT_ID, // chat id to send notification
         NOTIFY_TG_TOKEN: process.env.NOTIFY_TG_TOKEN, // tg token

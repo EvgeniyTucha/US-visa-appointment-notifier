@@ -64,6 +64,9 @@ const loginAndFetchActiveBookingDate = async (page) => {
         return null;
     }, countryCode, scheduleId);
     // Vancouver is in GMT-7 for local time
+    if (!bodyText) {
+        throw new ApplicationError("No date found in the body text");
+    }
     const parsedDate = new Date(bodyText + " GMT-7");
     logStep(`Parsed booked date: ${parsedDate} from profile`);
 
@@ -115,7 +118,6 @@ async function reschedule(page, earliestDateAvailable, appointment_time, facilit
         };
 
         const response = await page.evaluate(async (formData) => {
-            const logs = [];
             const form = document.createElement('form');
             form.method = 'POST';
 
@@ -128,20 +130,11 @@ async function reschedule(page, earliestDateAvailable, appointment_time, facilit
             }
 
             document.body.appendChild(form);
-            logs.push("Form appended to document.");
-            const res = await fetch(form.action, {
+            return fetch(form.action, {
                 method: 'POST',
                 body: new FormData(form),
             });
-            logs.push(`Response status: ${res.status}`);
-
-            const text = await res.text();
-            logs.push(`Response body: ${text}`);
-            return { logs, text };
         }, formData);
-
-        response.logs.forEach(log => logStep(`logs form request: ${log}`));
-        logStep(`response.text: ${response.text}`);
 
         const bookedDate = await getMainPageDetails(page);
         const bookedDateStr = format(bookedDate, dateFormat)
@@ -154,6 +147,7 @@ async function reschedule(page, earliestDateAvailable, appointment_time, facilit
             const msg = `Reschedule Failed. ${dateAsStr} ${appointment_time}. Status: ${response.status}`;
             await sendTelegramNotification(msg);
             await sendTelegramScreenshotSecure(page, `reschedule_failed_${formattedNowDate}`);
+            logStep(`Response for reschedule failed ${response}`)
         }
     } catch (error) {
         console.error('Error during reschedule:', error);
