@@ -214,8 +214,8 @@ const process = async () => {
     logStep(`starting process with ${maxTries} tries left`);
 
     const now = new Date();
-    const page = await browser.newPage();
     try {
+        const page = await browser.newPage();
         if (maxTries-- <= 0) {
             await sendTelegramNotification('Max retries reached. Please restart the process.');
             console.log('Reached Max tries')
@@ -277,19 +277,14 @@ function getAvailableTimesUrl(availableDate) {
     return siteInfo.AVAILABLE_TIMES_URL + `?date=${availableDate}&appointments[expedite]=false`
 }
 
-async function runProcess() {
-    while (true) {
-        try {
-            await process();
-        } catch (err) {
-            console.error("Error:", err);
-            await delay(NEXT_SCHEDULE_POLL_MIN);
-            await sendTelegramNotification(`Houston, we have a problem: ${err}. \n\n\n Script restarting...`);
-        }
+(async () => {
+    try {
+        await process();
+    } catch (err) {
+        console.error(err);
+        await sendTelegramNotification(`Huston we have a problem: ${err}. \n Script stopped`);
     }
-}
-
-runProcess();
+})();
 
 function addDays(theDate, days) {
     return new Date(theDate.getTime() + days * 24 * 60 * 60 * 1000);
