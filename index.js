@@ -214,8 +214,8 @@ const process = async () => {
     logStep(`starting process with ${maxTries} tries left`);
 
     const now = new Date();
+    const page = await browser.newPage();
     try {
-        const page = await browser.newPage();
         if (maxTries-- <= 0) {
             await sendTelegramNotification('Max retries reached. Please restart the process.');
             console.log('Reached Max tries')
@@ -256,8 +256,10 @@ const process = async () => {
         if (err.name !== 'TimeoutError' && err.name !== 'ApplicationError') {
             await sendTelegramNotification(`Huston we have a problem: ${err}`);
         }
+    } finally {
+        await page.close();
+        await browser.close();
     }
-    await browser.close();
     logStep(`Sleeping for ${NEXT_SCHEDULE_POLL_MIN} minutes`)
     await delay(NEXT_SCHEDULE_POLL_MIN)
     await process()
