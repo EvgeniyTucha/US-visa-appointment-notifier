@@ -221,7 +221,7 @@ const process = async () => {
             break;
         } catch (err) {
             console.error(`newPage() failed [attempt ${i + 1}]:`, err);
-            await delay(5000);
+            await delay(0.5);
         }
     }
     if (!page) {
