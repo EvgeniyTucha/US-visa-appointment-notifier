@@ -214,7 +214,19 @@ const process = async () => {
     logStep(`starting process with ${maxTries} tries left`);
 
     const now = new Date();
-    const page = await browser.newPage();
+    let page;
+    for (let i = 0; i < 3; i++) {
+        try {
+            page = await browser.newPage();
+            break;
+        } catch (err) {
+            console.error(`newPage() failed [attempt ${i + 1}]:`, err);
+            await delay(5000);
+        }
+    }
+    if (!page) {
+        throw new Error("Failed to open new page after 3 attempts");
+    }
     try {
         if (maxTries-- <= 0) {
             await sendTelegramNotification('Max retries reached. Please restart the process.');
@@ -262,7 +274,6 @@ const process = async () => {
     }
     logStep(`Sleeping for ${NEXT_SCHEDULE_POLL_MIN} minutes`)
     await delay(NEXT_SCHEDULE_POLL_MIN)
-    await process()
 }
 
 async function writeDateToFile(now, earliestDateStr, availableTimes) {
@@ -281,7 +292,9 @@ function getAvailableTimesUrl(availableDate) {
 
 (async () => {
     try {
-        await process();
+        while (true) {
+            await process();
+        }
     } catch (err) {
         console.error(err);
         await sendTelegramNotification(`Huston we have a problem: ${err}. \n Script stopped`);
@@ -303,7 +316,7 @@ cron.schedule('1 0 * * *', () => {
 });
 
 // Schedule the function to run daily at 00:02 (2 minutes past midnight)
-cron.schedule('3 0 * * *', () => {
+cron.schedule('2 0 * * *', () => {
     logStep('Running scheduled task log analyzer');
     logAnalyzer().then(result => {
         console.log(result);

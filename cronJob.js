@@ -50,7 +50,7 @@ async function logAnalyzer() {
             .toISOString().split('T')[0];
         const targetDateAsArray = targetDate.split('-');
         const datePattern = new RegExp(
-            `\\[(\\d+)\\] ${targetDateAsArray[0]}-${targetDateAsArray[1]}-${targetDateAsArray[2]}T(\\d+:\\d+:\\d+\\.\\d+Z) ==> `
+            `\[(\d+)] ${targetDateAsArray[0]}-${targetDateAsArray[1]}-${targetDateAsArray[2]}T(\d+:\d+:\d+\.\d+Z) ==> `
         );        const regex = new RegExp(datePattern);
         logStep(`Log analyzer started for ${targetDate}`)
         logStep(`Log analyzer logs found size ${logs.length}`)
@@ -85,8 +85,6 @@ async function logAnalyzer() {
             logStep(statsMsg);
         }
         logStep(`Log analyzer finished for ${targetDate}`)
-
-        return true
     } catch (error) {
         logStep(`Error reading or processing log file: ${error.message}`);
     }
