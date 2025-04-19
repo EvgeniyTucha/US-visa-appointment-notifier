@@ -4,6 +4,7 @@ require('dotenv').config();
 const dateFormat = 'yyyy-MM-dd';
 const cron = require('node-cron');
 const fs = require('fs');
+const {execSync} = require('child_process');
 
 const {delay, logStep, debug} = require('./utils');
 const {sendTelegramNotification, sendTelegramScreenshot, sendTelegramScreenshotSecure} = require('./notifier');
@@ -209,7 +210,10 @@ const checkForAvailableTimes = async (page, earliestDateStr) => {
 const process = async () => {
     const StealthPlugin = require('puppeteer-extra-plugin-stealth');
     puppeteer.use(StealthPlugin());
-    const browser = await puppeteer.launch(!IS_PROD ? {headless: false} : {args: ['--no-sandbox', '--disable-setuid-sandbox']});
+    const browser = await puppeteer.launch(!IS_PROD ? {headless: false} : {
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
 
     logStep(`starting process with ${maxTries} tries left`);
 
@@ -272,8 +276,6 @@ const process = async () => {
         await page.close();
         await browser.close();
     }
-    logStep(`Sleeping for ${NEXT_SCHEDULE_POLL_MIN} minutes`)
-    await delay(NEXT_SCHEDULE_POLL_MIN)
 }
 
 async function writeDateToFile(now, earliestDateStr, availableTimes) {
@@ -293,7 +295,14 @@ function getAvailableTimesUrl(availableDate) {
 (async () => {
     try {
         while (true) {
+            try {
+                execSync('pkill -f chromium');
+            } catch (err) {
+                console.log('No stale chromium processes.');
+            }
             await process();
+            logStep(`Sleeping for ${NEXT_SCHEDULE_POLL_MIN} minutes`);
+            await delay(NEXT_SCHEDULE_POLL_MIN);
         }
     } catch (err) {
         console.error(err);
