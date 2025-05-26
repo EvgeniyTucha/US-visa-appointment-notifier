@@ -100,6 +100,27 @@ const getMainPageDetails = async (page) => {
     return parsedDate;
 }
 
+async function postRequestForReschedule(page, formData) {
+    return page.evaluate(async (formData) => {
+        const form = document.createElement('form');
+        form.method = 'POST';
+
+        for (const key in formData) {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = key;
+            input.value = formData[key];
+            form.appendChild(input);
+        }
+
+        document.body.appendChild(form);
+        return fetch(form.action, {
+            method: 'POST',
+            body: new FormData(form),
+        });
+    }, formData);
+}
+
 async function reschedule(page, earliestDateAvailable, appointment_time, facility_id) {
     const now = new Date();
     const formattedNowDate = format(now, dateFormat);
@@ -118,24 +139,7 @@ async function reschedule(page, earliestDateAvailable, appointment_time, facilit
             "appointments[consulate_appointment][time]": appointment_time,
         };
 
-        const response = await page.evaluate(async (formData) => {
-            const form = document.createElement('form');
-            form.method = 'POST';
-
-            for (const key in formData) {
-                const input = document.createElement('input');
-                input.type = 'hidden';
-                input.name = key;
-                input.value = formData[key];
-                form.appendChild(input);
-            }
-
-            document.body.appendChild(form);
-            return fetch(form.action, {
-                method: 'POST',
-                body: new FormData(form),
-            });
-        }, formData);
+        const response = await postRequestForReschedule(page, formData);
 
         const bookedDate = await getMainPageDetails(page);
         const bookedDateStr = format(bookedDate, dateFormat)
@@ -152,7 +156,7 @@ async function reschedule(page, earliestDateAvailable, appointment_time, facilit
         }
     } catch (error) {
         console.error('Error during reschedule:', error);
-        await sendTelegramNotification(`Huston we have a problem during ALT rescheduling: ${err}`);
+        await sendTelegramNotification(`Huston we have a problem during ALT rescheduling: ${error}`);
         await sendTelegramScreenshot(page, `error_alt_reschedule_on_date_${formattedNowDate}`);
     }
 }
@@ -298,7 +302,7 @@ function getAvailableTimesUrl(availableDate) {
             try {
                 execSync('pkill -f chromium');
             } catch (err) {
-                console.log('No stale chromium processes.');
+                logStep('No stale chromium processes.');
             }
             await process();
             logStep(`Sleeping for ${NEXT_SCHEDULE_POLL_MIN} minutes`);
