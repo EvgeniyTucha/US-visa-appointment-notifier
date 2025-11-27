@@ -5,7 +5,6 @@ This is forked from [theoomoregbee/US-visa-appointment-notifier](https://github.
 I made some adjustments to fit on what I wanted, you can check the differences [here](https://github.com/theoomoregbee/US-visa-appointment-notifier/compare/main...jluiz20:US-visa-appointment-notifier:main), but the main ones are:
 
 - changed time interval from milliseconds to minutes (I wanted to check every 15 minutes)
-- added a sleep range (between env var `SLEEP_HOUR` and `WAKEUP_HOUR`) as I didn't want to get emails during night
 - closed the browser after each check (as I am using a bigger time internal, made more sense close it and always log in)
 - ignore errors (catch and retry on next interval) (page can be in maintenance, for example)
 
@@ -30,6 +29,12 @@ $ npm start
 ```
 
 ![email notification sample](./email-screen-shot.png)
+
+## Telegram chatbot notification setup
+
+- setup NOTIFY_TG_CHAT_ID and NOTIFY_TG_TOKEN
+- you can get the NOTIFY_TG_CHAT_ID by sending a /start command to the bot @userinfobot
+
 
 ## How it works
 
@@ -59,5 +64,5 @@ You can create a free account with <https://www.mailgun.com/> which should be su
 - clone the repo
 - run `npm i` within the cloned repo directory
 - with latest portal updates new module is required, run
-  `npm install puppeteer-extra puppeteer-extra-plugin-stealth`
+  `npm install puppeteer-extra puppeteer-extra-plugin-stealth node-telegram-bot-api`
 - start the process with `npm start`
